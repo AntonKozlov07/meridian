@@ -28,6 +28,7 @@ from meridian.enrich.scrobble import Event, ScrobbleTracker
 from meridian.core.state import CONNECTING, ERROR, LOGGED_OUT, SETUP_REQUIRED, WAITING, PlayerState
 from meridian.sources.spotify.auth import SpotifyAuth
 from meridian.sources.spotify.login import LoginError
+from meridian.sources.spotify.source import PlaybackNotStarted
 from meridian.sources.spotify.source import SpotifySource
 
 log = logging.getLogger(__name__)
@@ -78,6 +79,8 @@ class Api:
         if self._auth.has_session():
             self._start()
             return PlayerState(status=CONNECTING).to_dict()
+        if self._auth.cache.get_cached_token():  # signed in before, but the stored approval no longer covers what Meridian asks for
+            return PlayerState(status=LOGGED_OUT, message="Meridian now asks for one more permission (your followed artists). Press Connect to approve it.").to_dict()
         return PlayerState(status=LOGGED_OUT).to_dict()
 
     def save_client_id(self, client_id: str) -> dict:
@@ -300,6 +303,9 @@ class Api:
             return self._fail("Not connected to Spotify.")
         try:
             action(self._source)
+        except PlaybackNotStarted as e:
+            log.warning("action failed: %s", e)
+            return self._fail(str(e))
         except SpotifyException as e:
             log.warning("action failed: HTTP %s %s %s", e.http_status, getattr(e, "reason", ""), e.msg)
             return self._fail(friendly_error(e))

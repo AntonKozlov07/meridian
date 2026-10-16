@@ -20,9 +20,14 @@ LIBRARY_TTL_S = 300
 LIBRARY_CAP = 200  # per section
 SEARCH_LIMIT = 5  # per type
 MAX_SKIPS = 8  # beyond this, jump with start_playback instead of repeated next
+QUEUE_SETTLE_S = 0.5  # between "add to queue" and "next"; Spotify drops a skip that races the queue write
 NEVER = float("-inf")  # "not fetched yet" for time.monotonic() stamps (0.0 would depend on system uptime)
 
 REPEAT_MODES = ("off", "context", "track")
+
+
+class PlaybackNotStarted(Exception):
+    """Spotify took the play command but nothing started. The message says what to do about it."""
 
 
 def parse_track(item: dict) -> Track:
@@ -107,6 +112,8 @@ class SpotifySource:
         self._context_uri: str | None = None
         self._device_id: str | None = None  # the device Spotify reported active at the last poll
         self._last_device_id: str | None = None  # the last one that was ever active: where to resume
+        self._device_type: str | None = None  # of that device: Computer, Smartphone, Speaker...
+        self._device_name: str | None = None
         self._library: Library | None = None
         self._library_at = NEVER
         self._user_id: str | None = None
@@ -126,6 +133,9 @@ class SpotifySource:
         self._context_uri = (pb.get("context") or {}).get("uri")
         self._device_id = (pb.get("device") or {}).get("id")
         self._last_device_id = self._device_id or self._last_device_id
+        if self._device_id:
+            self._device_type = (pb.get("device") or {}).get("type")
+            self._device_name = (pb.get("device") or {}).get("name")
         self._refresh_timeline_data(track)
         device = pb.get("device") or {}
         vol = device.get("volume_percent")
@@ -306,15 +316,15 @@ class SpotifySource:
         cols += [parse_artist(a) for a in (r.get("artists") or {}).get("items", []) if a]
         return SearchResults(query=q, songs=songs, collections=cols)
 
-    def _start(self, expect_uri: str | None = None, **kw) -> None:
+    def _start(self, expect_uri: str | None = None, **kw) -> bool:
         """start_playback aimed at a specific device, never at "whatever Spotify picks".
 
-        Without a device_id Spotify chooses, and when the phone has dropped out as the active device
-        the request lands nowhere or on the wrong device. If the target no longer answers, wake the last
-        device we used (or the first controllable one) instead of giving up.
+        If the target went idle, wake the last device we used instead of giving up. Spotify can also accept the
+        command and then not play (an iPhone with Spotify in the background), so the result is checked and the
+        command retried once. Returns whether playback was confirmed.
         """
         target = self._device_id or self._last_device_id
-        log.info("play: device=%s args=%s", target, kw)
+        log.info("play: device=%s (%s) args=%s", target, self._device_type, kw)
         try:
             self._call_start(target, kw)
         except spotipy.SpotifyException as e:
@@ -329,45 +339,91 @@ class SpotifySource:
             target = fallback.id
             self._sp.start_playback(device_id=target, **kw)
             self._device_id = self._last_device_id = target
-        self._verify_started(target, expect_uri, kw)
+            self._device_type, self._device_name = fallback.type, fallback.name
+        if self._confirm(expect_uri):
+            return True
+        log.warning("play did not take on %s; retrying once", target)
+        self._call_start(target, kw)
+        return self._confirm(expect_uri)
 
     def _call_start(self, target: str | None, kw: dict) -> None:
         self._sp.start_playback(device_id=target, **kw) if target else self._sp.start_playback(**kw)
 
-    def _verify_started(self, target: str | None, expect_uri: str | None, kw: dict) -> None:
-        """Spotify can accept a play command and then not play (a phone that just went idle). Check, and retry once."""
+    def _confirm(self, expect_uri: str | None) -> bool:
+        """Is something really playing (and the song we asked for)? Spotify needs a moment to reflect a new song."""
         if not VERIFY_PLAYBACK:
-            return
+            return True
         time.sleep(VERIFY_DELAY_S)
         try:
             pb = self._sp.current_playback(additional_types="track,episode", market="from_token")
         except spotipy.SpotifyException as e:
             log.warning("could not verify playback: HTTP %s", e.http_status)
-            return
+            return True  # cannot tell, so do not raise a false alarm
         playing = bool(pb and pb.get("is_playing"))
         uri = ((pb or {}).get("item") or {}).get("uri")
         on = ((pb or {}).get("device") or {}).get("name")
-        if playing and (expect_uri is None or uri == expect_uri):
-            log.info("play verified: now playing %s on %s", uri, on)
-            return
-        log.warning("play did not take (playing=%s uri=%s device=%s, wanted %s); retrying once", playing, uri, on, expect_uri)
-        try:
-            self._call_start(target, kw)
-        except spotipy.SpotifyException as e:
-            log.warning("retry failed: HTTP %s %s %s", e.http_status, getattr(e, "reason", ""), e.msg)
-            raise
+        ok = playing and (expect_uri is None or uri == expect_uri)
+        log.info("play %s: playing=%s uri=%s device=%s (wanted %s)", "verified" if ok else "NOT confirmed", playing, uri, on, expect_uri)
+        return ok
+
+    # -- playing a song right now ---------------------------------------
+    def _direct(self, uri: str, position_ms: int | None) -> bool:
+        kw: dict = {"uris": [uri]}
+        if position_ms:
+            kw["position_ms"] = max(0, int(position_ms))
+        return self._start(expect_uri=uri, **kw)
+
+    def _via_queue(self, uri: str, position_ms: int | None) -> bool:
+        """Queue the song and skip to it. Phones obey "add to queue" and "next" even when they ignore "play this"."""
+        dev = self._device_id or self._last_device_id
+        log.info("play via queue and skip: device=%s uri=%s", dev, uri)
+        self._sp.add_to_queue(uri, device_id=dev)
+        time.sleep(QUEUE_SETTLE_S)
+        self._sp.next_track(device_id=dev)
+        ok = self._confirm(uri)
+        if ok and position_ms:
+            self._sp.seek_track(max(0, int(position_ms)), device_id=dev)
+        return ok
+
+    def _play_track_now(self, uri: str, position_ms: int | None = None) -> None:
+        phone = (self._device_type or "").lower() in ("smartphone", "tablet")
+        order = (self._via_queue, self._direct) if phone else (self._direct, self._via_queue)
+        last_error: spotipy.SpotifyException | None = None
+        unconfirmed = False
+        for attempt in order:
+            try:
+                if attempt(uri, position_ms):
+                    return
+                unconfirmed = True
+            except spotipy.SpotifyException as e:
+                last_error = e
+                log.warning("%s failed: HTTP %s %s %s", attempt.__name__, e.http_status, getattr(e, "reason", ""), e.msg)
+        if last_error is not None and not unconfirmed:
+            raise last_error  # nothing even answered (e.g. no device at all): Spotify's own reason is the useful one
+        raise PlaybackNotStarted(self._not_started_message())
+
+    def _not_started_message(self) -> str:
+        who = self._device_name or "That device"
+        return (f"{who} accepted the command but did not start playing. Phones often ignore remote play while Spotify is "
+                "in the background: open Spotify on it and keep it on screen, or choose another device in the top bar.")
 
     def play_uri(self, uri: str, kind: str) -> None:
         """Play a song on its own, or an album, playlist, artist or Liked Songs from the top."""
         if kind in ("track", "episode"):
-            self._start(expect_uri=uri, uris=[uri])
-        else:
-            self._start(context_uri=uri)
+            self._play_track_now(uri)
+        elif not self._start(context_uri=uri):
+            target = self._device_id or self._last_device_id
+            log.info("waking %s with a transfer, then trying again", target)
+            if target:
+                self._sp.transfer_playback(target, force_play=False)
+                time.sleep(1.0 if VERIFY_PLAYBACK else 0)
+            if not self._start(context_uri=uri):
+                raise PlaybackNotStarted(self._not_started_message())
         self.invalidate_queue()
 
     def play_at(self, uri: str, position_ms: int) -> None:
         """Play a song starting part-way in, e.g. from a lyric-line search hit."""
-        self._start(expect_uri=uri, uris=[uri], position_ms=max(0, int(position_ms)))
+        self._play_track_now(uri, position_ms)
         self.invalidate_queue()
 
     # -- controls ------------------------------------------------------
@@ -399,7 +455,7 @@ class SpotifySource:
                 return
             except spotipy.SpotifyException:
                 pass  # not in that context (e.g. a queued song): play it on its own
-        self._start(expect_uri=uri, uris=[uri])
+        self._play_track_now(uri)
         self.invalidate_queue()
 
     def jump_ahead(self, steps: int, uri: str) -> None:

@@ -186,3 +186,12 @@ def test_one_network_blip_is_silent_but_repeated_failures_show_an_error():
     assert pushed == []
     api._poll_failed(requests.exceptions.ConnectionError(), 2)
     assert pushed[0]["status"] == ERROR and "internet" in pushed[0]["message"]
+
+
+def test_stale_stored_approval_asks_to_connect_again(monkeypatch):
+    from unittest.mock import MagicMock
+    fake = MagicMock(); fake.has_session.return_value = False
+    fake.cache.get_cached_token.return_value = {"access_token": "old", "scope": "user-read-playback-state"}
+    monkeypatch.setattr("meridian.api.SpotifyAuth", lambda *a: fake)
+    r = Api(Config(spotify_client_id="a" * 32)).boot()
+    assert r["status"] == LOGGED_OUT and "one more permission" in r["message"]

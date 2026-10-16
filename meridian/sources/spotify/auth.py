@@ -28,6 +28,7 @@ SCOPES = " ".join([
     "user-read-private",
     "user-library-read",
     "user-library-modify",
+    "user-follow-read",  # followed artists in the Library
     "playlist-read-private",
     "playlist-read-collaborative",
 ])

@@ -323,3 +323,23 @@ def test_a_crashing_source_does_not_stop_the_others():
     e.request(track(), ("lyrics", "features"))
     assert wait_for(lambda: len(got) == 2)
     assert {g["kind"]: g["error"] for g in got} == {"lyrics": True, "features": False}
+
+
+# ---- LRCLIB is rate limited: space requests out and retry once -------------------
+
+def test_lyrics_retry_once_after_a_429_then_succeed():
+    n = []
+    def h(req):
+        n.append(1)
+        return httpx.Response(429) if len(n) == 1 else httpx.Response(200, json={"syncedLyrics": "[00:01.00]Hi"})
+    assert lyrics.fetch_lyrics(client(h), track()) == {"lines": [[1.0, "Hi"]]} and len(n) == 2
+
+
+def test_lyrics_requests_are_spaced_out(monkeypatch):
+    import time as _t
+    sleeps = []
+    monkeypatch.setattr(lyrics, "MIN_INTERVAL", 0.8)
+    monkeypatch.setattr(lyrics.time, "sleep", sleeps.append)
+    monkeypatch.setattr(lyrics, "_last", [_t.monotonic()])  # a request was just made
+    lyrics.fetch_lyrics(client(lambda r: httpx.Response(200, json={"syncedLyrics": "[00:01.00]Hi"})), track())
+    assert sleeps and 0 < sleeps[0] <= 0.8

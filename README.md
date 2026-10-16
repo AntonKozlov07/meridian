@@ -94,3 +94,10 @@ The image button in the top bar switches every cover in the app, in one click, b
 the big cover, the timeline, library cards (albums, playlists, artists) and search results. The choice is remembered.
 A geometric cover is drawn from the song's or album's ID, so the same one always looks the same, wherever it shows up.
 The colour wash behind the player follows whichever covers you are using. Items with no artwork of their own, like Liked Songs, always get a geometric cover.
+
+## Playing on a phone
+
+A phone's Spotify app often ignores a remote "play this now" while it is in the background, even though Spotify reports success.
+So when the active device is a phone or tablet, Meridian adds the song to the queue and skips to it (which phones do obey), checks that it
+really started, and falls back to a direct play if not. If nothing works it says so and suggests keeping Spotify open on the phone or choosing another device.
+`~/.meridian/meridian.log` records every attempt.

@@ -190,13 +190,6 @@ def test_other_404s_are_not_mistaken_for_a_missing_device():
     assert sp.start_playback.call_count == 1 and sp.devices.call_count == 1  # the one device list is poll()'s
 
 
-def test_no_device_to_wake_raises_a_clear_error():
-    sp, src = make(playback=None); src.poll()
-    sp.devices.return_value = {"devices": []}
-    sp.start_playback.side_effect = spotipy.SpotifyException(404, -1, "x", reason="NO_ACTIVE_DEVICE")
-    with pytest.raises(spotipy.SpotifyException):
-        src.play_uri("spotify:track:s1", "track")
-
 
 def _playing(uri, name="Phone"):
     return {"is_playing": True, "progress_ms": 0, "item": {**TRACK, "uri": uri}, "device": {"id": "d1", "name": name, "type": "Smartphone", "is_active": True}}
@@ -210,25 +203,101 @@ def test_verified_play_makes_no_second_attempt(monkeypatch):
     assert sp.start_playback.call_count == 1
 
 
-def test_play_that_did_not_take_is_retried_once(monkeypatch):
-    """Spotify accepted the command but nothing is playing (the phone dropped it). Retry on the same device, once."""
-    monkeypatch.setattr("meridian.sources.spotify.source.VERIFY_PLAYBACK", True)
-    sp, src = make(); src.poll()
-    sp.current_playback.return_value = {"is_playing": False, "item": TRACK, "device": {"id": "d1", "name": "Phone"}}
-    src.play_uri("spotify:track:s1", "track")
-    assert sp.start_playback.call_count == 2
-    assert all(c.kwargs["device_id"] == "d1" for c in sp.start_playback.call_args_list)
-
-
-def test_wrong_song_playing_is_retried(monkeypatch):
-    monkeypatch.setattr("meridian.sources.spotify.source.VERIFY_PLAYBACK", True)
-    sp, src = make(); src.poll()
-    sp.current_playback.return_value = _playing("spotify:track:something-else")
-    src.play_uri("spotify:track:s1", "track")
-    assert sp.start_playback.call_count == 2
 
 
 def test_unknown_spotify_errors_say_what_spotify_said():
     from meridian.api import friendly_error
     msg = friendly_error(spotipy.SpotifyException(403, -1, "Restriction violated", reason="UNKNOWN"))
     assert "403" in msg and "UNKNOWN" in msg
+
+
+PHONE_PB = {"is_playing": True, "progress_ms": 0, "item": TRACK, "device": {"id": "ph", "name": "iPhone", "type": "Smartphone", "is_active": True}}
+
+
+def phone():
+    sp, src = make(playback=PHONE_PB); src.poll()
+    return sp, src
+
+
+def verify_on(monkeypatch):
+    monkeypatch.setattr("meridian.sources.spotify.source.VERIFY_PLAYBACK", True)
+
+
+def test_no_device_at_all_reports_spotifys_own_reason():
+    sp, src = make(playback=None); src.poll()
+    sp.devices.return_value = {"devices": []}
+    gone = spotipy.SpotifyException(404, -1, "x", reason="NO_ACTIVE_DEVICE")
+    sp.start_playback.side_effect = gone; sp.add_to_queue.side_effect = gone
+    with pytest.raises(spotipy.SpotifyException):
+        src.play_uri("spotify:track:s1", "track")
+
+
+def test_a_phone_is_played_by_queue_and_skip_not_by_play(monkeypatch):
+    """The real iPhone log: it accepted start_playback and then played nothing. Phones obey queue + next."""
+    verify_on(monkeypatch)
+    sp, src = phone()
+    sp.current_playback.return_value = _playing("spotify:track:s1", "iPhone")
+    src.play_uri("spotify:track:s1", "track")
+    sp.add_to_queue.assert_called_once_with("spotify:track:s1", device_id="ph")
+    sp.next_track.assert_called_once_with(device_id="ph")
+    sp.start_playback.assert_not_called()
+
+
+def test_phone_falls_back_to_a_direct_play_if_queue_and_skip_did_not_take(monkeypatch):
+    verify_on(monkeypatch)
+    sp, src = phone()
+    sp.current_playback.side_effect = [{"is_playing": False, "item": None, "device": {"name": "iPhone"}},
+                                       _playing("spotify:track:s1", "iPhone")]
+    src.play_uri("spotify:track:s1", "track")
+    assert sp.next_track.call_count == 1 and sp.start_playback.call_count == 1
+
+
+def test_lyric_hit_on_a_phone_seeks_after_the_skip(monkeypatch):
+    verify_on(monkeypatch)
+    sp, src = phone()
+    sp.current_playback.return_value = _playing("spotify:track:s1", "iPhone")
+    src.play_at("spotify:track:s1", 31000)
+    sp.seek_track.assert_called_once_with(31000, device_id="ph")
+
+
+def test_computers_still_use_a_direct_play(monkeypatch):
+    sp, src = make(); src.poll()
+    src.play_uri("spotify:track:s1", "track")
+    sp.start_playback.assert_called_once()
+    sp.add_to_queue.assert_not_called()
+
+
+def test_nothing_working_says_what_to_do(monkeypatch):
+    from meridian.sources.spotify.source import PlaybackNotStarted
+    verify_on(monkeypatch)
+    sp, src = phone()
+    sp.current_playback.return_value = {"is_playing": False, "item": None, "device": {"name": "iPhone"}}
+    with pytest.raises(PlaybackNotStarted) as e:
+        src.play_uri("spotify:track:s1", "track")
+    assert "iPhone" in str(e.value) and "keep it on screen" in str(e.value) and "another device" in str(e.value)
+    assert sp.add_to_queue.called and sp.start_playback.call_count == 2  # queue+skip, then a direct play and its one retry
+
+
+def test_context_play_wakes_the_device_with_a_transfer_then_retries(monkeypatch):
+    verify_on(monkeypatch)
+    sp, src = phone()
+    sp.current_playback.side_effect = [{"is_playing": False, "item": None}, {"is_playing": False, "item": None},
+                                       _playing("spotify:album:a1", "iPhone")]
+    src.play_uri("spotify:album:a1", "album")
+    sp.transfer_playback.assert_called_once_with("ph", force_play=False)
+    assert sp.start_playback.call_count == 3  # first try, its retry, then the try after the transfer
+
+
+def test_api_returns_the_not_started_message():
+    from meridian.api import Api
+    from meridian.config import Config
+    from meridian.sources.spotify.source import PlaybackNotStarted
+    api = Api(Config()); api._source = MagicMock()
+    api._source.play_uri.side_effect = PlaybackNotStarted("iPhone accepted the command but did not start playing.")
+    r = api.play_uri("spotify:track:x", "track")
+    assert r == {"ok": False, "error": "iPhone accepted the command but did not start playing."}
+
+
+def test_followed_artists_permission_is_requested():
+    from meridian.sources.spotify.auth import SCOPES
+    assert "user-follow-read" in SCOPES.split()
