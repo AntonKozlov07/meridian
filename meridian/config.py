@@ -2,15 +2,21 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).resolve().parent.parent
-UI_DIR = Path(__file__).resolve().parent / "ui"
+FROZEN = bool(getattr(sys, "frozen", False))  # running as the packaged app
+# From source this is the project folder; packaged, PyInstaller unpacks bundled files under _MEIPASS.
+ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+UI_DIR = ROOT / "meridian" / "ui"
+DATA_DIR = Path.home() / ".meridian"  # cache, settings, log (and .env for the packaged app)
+# The packaged app lives somewhere read-only (Program Files, a zip), so its .env goes in the user's folder.
+ENV_PATH = DATA_DIR / ".env" if FROZEN else ROOT / ".env"
 
-load_dotenv(ROOT / ".env")
+load_dotenv(ENV_PATH)
 
 
 @dataclass(frozen=True)
@@ -23,11 +29,10 @@ class Config:
     musicbrainz_user_agent: str = "Meridian/0.1 (contact not set)"
 
 
-ENV_PATH = ROOT / ".env"
-
 
 def save_env_value(key: str, value: str, path: Path = ENV_PATH) -> None:
     """Sets KEY=value in .env (creating it), keeping every other line, and in this process."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     lines = path.read_text().splitlines() if path.exists() else []
     out, done = [], False
     for line in lines:

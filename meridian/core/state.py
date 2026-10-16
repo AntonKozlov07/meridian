@@ -80,6 +80,7 @@ class PlayerState:
     liked: bool = False
     devices: list[Device] = field(default_factory=list)
     timeline: "Timeline | None" = None
+    user_name: str | None = None  # Spotify display name, for the avatar initials
     message: str | None = None
 
     def to_dict(self) -> dict:

@@ -21,3 +21,25 @@
 .fact .s a{color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .lfm{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding:12px 14px;border-radius:var(--radius-2);background:var(--fill-1);font-size:13px;line-height:18px;color:var(--ink-muted)}
 .lfm b{color:var(--ink);font-weight:500}
+
+/* Focus: every interactive element shows a 2px amber ring */
+.mp :is(button,a,input,[tabindex="0"]):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mp .blk:focus-visible,.mp .tl:focus-visible{outline-offset:-3px}
+.mp .tl:focus-visible{outline-offset:-4px}
+button.av{border:0;cursor:pointer;color:var(--ink);padding:0}
+button.av:hover{background:var(--fill-track)}
+.dot{border-radius:2px} /* nothing fully rounded */
+.notice{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:var(--radius-2);background:var(--fill-1);max-width:420px;font-size:13px;line-height:18px;color:var(--ink-muted)}
+.notice b{color:var(--danger);font-weight:600}
+.sld:focus-visible{outline-offset:2px}
+
+/* Focus: every interactive element shows a 2px amber ring */
+.mp :is(button,a,input,[tabindex="0"]):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mp .blk:focus-visible{outline-offset:-3px}
+.mp .tl:focus-visible{outline-offset:-4px}
+button.av{border:0;cursor:pointer;color:var(--ink);padding:0}
+button.av:hover{background:var(--fill-track)}
+.dot{border-radius:2px} /* nothing fully rounded */
+.notice{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:var(--radius-2);background:var(--fill-1);max-width:420px;font-size:13px;line-height:18px;color:var(--ink-muted)}
+.notice b{color:var(--danger);font-weight:600}
+.pal input:focus-visible{outline:0}

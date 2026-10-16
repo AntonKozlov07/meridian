@@ -20,6 +20,7 @@ from meridian import config as config_mod
 from meridian.config import Config
 from meridian.core.poller import Poller
 from meridian.core.source import PlayerSource
+from meridian.settings import Settings
 from meridian.enrich import lastfm
 from meridian.enrich.cache import Cache
 from meridian.enrich.manager import Enricher
@@ -45,6 +46,7 @@ class Api:
         self._lock = threading.Lock()
         self._login_cancel: threading.Event | None = None
         self._cache: Cache | None = None
+        self._settings = Settings()
         self._enricher: Enricher | None = None
         self._push_enrich: Callable[[dict], None] = lambda e: None
         self._tracker = ScrobbleTracker()
@@ -244,6 +246,12 @@ class Api:
 
     def play_at(self, uri: str, position_ms: int) -> dict:
         return self._do(lambda s: s.play_at(uri, int(position_ms)))
+
+    def get_settings(self) -> dict:
+        return self._settings.get_all()
+
+    def set_setting(self, key: str, value) -> dict:
+        return self._ok() if self._settings.set(key, value) else self._fail("Unknown setting.")
 
     def integrations(self) -> dict:
         """What the About panel can offer: Last.fm stats need a key, linking needs the secret too."""

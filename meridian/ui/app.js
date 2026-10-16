@@ -32,6 +32,8 @@ var I={
   expand:S+'<path d="M15 4h5v5M9 20H4v-5M20 4l-6 6M4 20l6-6"/></svg>',
   lyrics:S+'<path d="M4 6h16M4 10.5h16M4 15h10M4 19.5h6"/></svg>',
   sliders:S+'<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+  sun:S+'<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg>',
+  moon:S+'<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
   x:S+'<path d="M6 6l12 12M18 6 6 18"/></svg>'
 };
 var PAL=[["#2b211c","#c7672f","#efe4d2"],["#e9e1d3","#2b2723","#b8892e"],["#3a2a22","#d9a55a","#8a3b2a"],["#1f2420","#8c9a6b","#e7dcc6"],["#c4a57a","#3b2c24","#f1e8da"],["#5b2a22","#e3b868","#1d1a17"],["#d8cfc0","#7c5a3a","#2a2522"],["#262320","#cf8a45","#9aa07a"],["#8a3b2a","#efe4d2","#2b211c"],["#3b3a2c","#d9a55a","#c7672f"]];
@@ -76,7 +78,7 @@ app.innerHTML=
 '<div class="amb" id="amb"></div>'+
 '<header class="bar"><div class="bl"><div class="brand"><span class="mk"></span>Meridian</div><nav class="views" id="views"><button data-v="listen">Listen</button><button data-v="library">Library</button></nav></div>'+
   '<button class="cmd" id="cmdb">'+I.search+'<span>Search, or jump to anything</span><kbd>⌘K</kbd></button>'+
-  '<div class="br"><span class="chip"><span class="dot"></span>Spotify</span><button class="btn" id="devb"></button><span class="av">AK</span></div></header>'+
+  '<div class="br"><span class="chip"><span class="dot"></span>Spotify</span><button class="btn" id="devb"></button><button class="ibtn" id="themeb" title="Switch theme"></button><button class="av" id="avb" title="Account"></button></div></header>'+
 '<section class="main" id="listen">'+
   '<div class="cover" id="cover"></div>'+
   '<div class="info"><div class="np" id="np"></div><div class="ttl" id="ttl"></div><div class="who" id="who"></div><div class="chips" id="chips"></div>'+
@@ -86,8 +88,8 @@ app.innerHTML=
 '<section class="main lib" id="library" hidden></section>'+
 '<div class="ctrl"><div class="cl"><b id="el"></b><span id="ends"></span></div>'+
   '<div class="cc"><button class="ibtn" id="shuf" title="Shuffle (S)">'+I.shuffle+'</button><button class="ibtn" id="prev" title="Previous">'+I.prev+'</button><button class="pbtn lg" id="pp" title="Play / pause (Space)"></button><button class="ibtn" id="next" title="Next">'+I.next+'</button><button class="ibtn" id="rep" title="Repeat (R)">'+I.repeat+'<span class="badge" id="repb"></span></button></div>'+
-  '<div class="cr"><span class="sub" id="upn"></span><button class="ibtn" id="mute"></button><div class="sld vol" id="vol"><div class="tr"><div class="fl"></div><div class="th"></div></div></div></div></div>'+
-'<div class="tl" id="tl"><div class="strip" id="strip"></div><div class="noon"><span id="nowl"></span></div><div class="fade-l"></div><div class="fade-r"></div></div>'+
+  '<div class="cr"><span class="sub" id="upn"></span><button class="ibtn" id="mute"></button><div class="sld vol" id="vol" tabindex="0" role="slider" aria-label="Volume"><div class="tr"><div class="fl"></div><div class="th"></div></div></div></div></div>'+
+'<div class="tl" id="tl" tabindex="0" role="slider" aria-label="Playback position. Arrow keys seek 5 seconds"><div class="strip" id="strip"></div><div class="noon"><span id="nowl"></span></div><div class="fade-l"></div><div class="fade-r"></div></div>'+
 '<div class="pop" id="pop" style="width:300px"></div>'+
 '<div class="pal" id="pal"><div class="box"><div class="in">'+I.search+'<input id="q" placeholder="Songs, artists, playlists, or a lyric"><kbd>esc</kbd></div><div class="res" id="res"></div><div class="ft"><span>↵ Play now</span><span>⇧↵ Add to queue</span><span>↑↓ Move</span></div></div></div>';
 var $=function(id){return document.getElementById(id);};
@@ -107,7 +109,7 @@ function renderStrip(){
   var h='';
   seq.forEach(function(b,k){var x=T[b.i],w=x.d*PPS-6;
     var sub=b.k==='past'?esc(x.a):b.k==='cur'?esc(x.a):esc(x.a)+' · <span class="mono">'+clk(clock0+b.s*1000)+'</span>';
-    h+='<div class="blk '+b.k+(x.off?' off':'')+'" data-k="'+k+'" style="left:'+(b.s*PPS)+'px;width:'+w+'px">'+(b.k==='cur'?'<span class="pf" id="pf"></span><span class="pl" id="pl"></span>':'')+'<div class="art">'+artT(b.i)+'</div><div class="t"><div class="n">'+esc(x.t)+'</div><div class="a">'+(x.off?'Unavailable, will be skipped':sub)+'</div></div></div>';});
+    h+='<div class="blk '+b.k+(x.off?' off':'')+'" tabindex="'+(x.off?-1:0)+'" data-k="'+k+'" style="left:'+(b.s*PPS)+'px;width:'+w+'px">'+(b.k==='cur'?'<span class="pf" id="pf"></span><span class="pl" id="pl"></span>':'')+'<div class="art">'+artT(b.i)+'</div><div class="t"><div class="n">'+esc(x.t)+'</div><div class="a">'+(x.off?'Unavailable, will be skipped':sub)+'</div></div></div>';});
   var end=seq.length?seq[seq.length-1].s+T[seq[seq.length-1].i].d:0;
   if(LIVE&&seq.length&&!nUpCount())h+='<div class="qempty" style="left:'+(end*PPS+16)+'px">Queue is empty</div>';
   h+='<div class="ruler">';
@@ -126,6 +128,7 @@ function posStrip(){
 }
 function renderAmbChips(){
   var x=T[st.cur],p=x.pal||PAL[st.cur%PAL.length];
+  if(x.off){$('chips').innerHTML='<div class="notice"><b>This track is unavailable</b><span>Spotify cannot play it here, in your region or on this device. It will be skipped.</span></div>';$('amb').style.background='radial-gradient(1100px 600px at 14% 0%,'+hexA(p[1],.40)+',transparent 70%),radial-gradient(800px 500px at 90% 10%,'+hexA(p[2],.14)+',transparent 70%)';return;}
   $('amb').style.background='radial-gradient(1100px 600px at 14% 0%,'+hexA(p[1],.40)+',transparent 70%),radial-gradient(800px 500px at 90% 10%,'+hexA(p[2],.14)+',transparent 70%)';
   $('chips').innerHTML=(x.bpm!=null?'<span class="chip"><b>'+x.bpm+'</b>BPM</span>':'')+(x.key?'<span class="chip"><b>'+esc(x.key)+'</b></span>':'')+(x.en!=null?'<span class="chip">Energy <b>'+x.en+'%</b></span>':'')+(x.pc!=null?'<span class="chip"><b>'+x.pc+'</b>plays</span>':'');
 }
@@ -210,14 +213,14 @@ function renderLibLive(){
     var items=libFilter==='playlists'?LIB.playlists:libFilter==='albums'?LIB.albums:libFilter==='artists'?LIB.artists:LIB.playlists.concat(LIB.albums,LIB.artists);
     if(LIB.failed&&LIB.failed.length)h+='<p class="sub" style="margin:0 0 14px">Spotify would not return: '+esc(LIB.failed.join(', '))+'.</p>';
     if(!items.length)h+='<div class="empty"><div class="ic">'+I.search+'</div><h4>Nothing here yet</h4><p>Save playlists, albums or artists in Spotify and they will appear here.</p></div>';
-    else h+='<div class="grid">'+items.map(function(c,i){return '<div class="card'+(c.name===st.ctx?' on':'')+'" data-uri="'+esc(c.uri)+'" data-kind="'+esc(c.kind)+'" title="'+esc(c.name)+'"><div class="art">'+imgOrArt(c.art_url,i)+'</div><div class="n">'+esc(c.name)+'</div><div class="m">'+esc(c.subtitle)+'</div></div>';}).join('')+'</div>';
+    else h+='<div class="grid">'+items.map(function(c,i){return '<div class="card'+(c.name===st.ctx?' on':'')+'" tabindex="0" role="button" data-uri="'+esc(c.uri)+'" data-kind="'+esc(c.kind)+'" title="'+esc(c.name)+'"><div class="art">'+imgOrArt(c.art_url,i)+'</div><div class="n">'+esc(c.name)+'</div><div class="m">'+esc(c.subtitle)+'</div></div>';}).join('')+'</div>';
   }
   var keep=$('library').scrollTop;$('library').innerHTML=h;$('library').scrollTop=keep;
 }
 function renderLib(){
   if(LIVE){renderLibLive();loadLib(false);return;}
   $('library').innerHTML='<div class="lh"><h2>Library</h2><div class="flt" id="flt"><button class="chip sel">All</button><button class="chip">Playlists</button><button class="chip">Albums</button><button class="chip">Artists</button></div></div><div class="grid">'+
-    PLS.concat([["Concrete Orchard","Album · Ines Varga",1],["Two Rooms","Album · Okoro & Wren",3],["Rest Stops","Album · Dalton Reyes",5]]).map(function(p,i){return '<div class="card'+(p[0]===st.ctx?' on':'')+'" data-c="'+p[0]+'"><div class="art">'+art(p[2]+i)+'</div><div class="n">'+p[0]+'</div><div class="m">'+p[1]+'</div></div>';}).join('')+'</div>';
+    PLS.concat([["Concrete Orchard","Album · Ines Varga",1],["Two Rooms","Album · Okoro & Wren",3],["Rest Stops","Album · Dalton Reyes",5]]).map(function(p,i){return '<div class="card'+(p[0]===st.ctx?' on':'')+'" tabindex="0" role="button" data-c="'+p[0]+'"><div class="art">'+art(p[2]+i)+'</div><div class="n">'+p[0]+'</div><div class="m">'+p[1]+'</div></div>';}).join('')+'</div>';
 }
 function setView(v){st.view=v;$('views').querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.dataset.v===v);});$('listen').hidden=v!=='listen';$('library').hidden=v!=='library';if(v==='library')renderLib();}
 function play(i){if(T[i].off)return;st.cur=i;st.t=0;renderNow();}
@@ -283,8 +286,16 @@ function pick(k,queue){var r=pres[k];if(!r)return;closePal();
   setView('listen');var j2=ctxQ.indexOf(r.i);if(j2>-1)ctxQ.splice(j2,1);j2=userQ.indexOf(r.i);if(j2>-1)userQ.splice(j2,1);hist.push(st.cur);if(hist.length>3)ctxQ.push(hist.shift());play(r.i);if(r.ly){st.t=r.ly[0];renderTime();posStrip();}}
 
 
+/* ---------- Theme button and avatar ---------- */
+function initials(name){var w=String(name||'').trim().split(/\s+/).filter(Boolean);if(!w.length)return '';return (w.length>1?w[0][0]+w[1][0]:w[0].slice(0,2)).toUpperCase();}
+$('avb').textContent='AK';
+function renderTheme(){var t=document.documentElement.getAttribute('data-theme');$('themeb').innerHTML=t==='light'?I.moon:I.sun;$('themeb').title=t==='light'?'Switch to dark theme':'Switch to light theme';}
+document.addEventListener('meridian-theme',function(e){renderTheme();if(e.detail&&e.detail.user&&LIVE)call('set_setting','theme',e.detail.theme);});
+$('themeb').onclick=function(){window.meridianTheme&&window.meridianTheme.toggle();};
+renderTheme();
+
 /* ---------- Live mode: state pushed from Python (window.meridian.update) ---------- */
-var liveSeq=[],ENR={},REP=['off','context','track'],lastSeek=0,lastVol=0,lastEnd=0,seekT=0,volT=0,curId=null,toastT=0;
+var lastOff=false,liveSeq=[],ENR={},REP=['off','context','track'],lastSeek=0,lastVol=0,lastEnd=0,seekT=0,volT=0,curId=null,toastT=0;
 app.insertAdjacentHTML('beforeend','<div class="gate" id="gate" hidden></div><div class="toast" id="toast"></div>');
 function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(function(){t.classList.remove('show');},4000);}
 function apiObj(){return window.pywebview&&window.pywebview.api&&window.pywebview.api.boot?window.pywebview.api:null;}
@@ -329,17 +340,19 @@ $('gate').addEventListener('submit',function(e){e.preventDefault();
   var v=$('cid').value;var a=apiObj();if(!a)return;
   a.save_client_id(v).then(function(r){if(r.ok===false){showGate('setup_required',{message:r.error});return;}if(r.state)window.meridian.update(r.state);});
 });
+$('avb').onclick=function(){if(LIVE&&window.confirm('Disconnect Spotify?'))call('logout');};
 function devIcon(t){t=(t||'').toLowerCase();return t==='computer'?'laptop':t==='smartphone'||t==='tablet'?'phone':'speaker';}
 function hashPal(id){var h=0;for(var i=0;i<id.length;i++)h=(h*31+id.charCodeAt(i))|0;return PAL[Math.abs(h)%PAL.length];}
 function bootLive(){
   PLS.length=0;T.length=0;hist.length=0;userQ.length=0;ctxQ.length=0;DEV.length=0;
   T.push({t:'',a:'',al:'',y:null,d:1});st.cur=0;st.t=0;st.playing=false;st.liked={};st.ctx=null;st.dev=0;
   renderTrans();renderVol();renderDev();showGate('connecting');
-  function run(){window.pywebview.api.boot().then(window.meridian.update);window.pywebview.api.integrations().then(function(r){INTEG=r;});}
+  function run(){window.pywebview.api.boot().then(window.meridian.update);window.pywebview.api.integrations().then(function(r){INTEG=r;});
+    window.pywebview.api.get_settings().then(function(c){if(window.meridianTheme)window.meridianTheme.set(c.theme);});}
   run();
 }
 function mapTrack(tr){
-  var x={id:tr.id,uri:tr.uri,t:tr.title,a:tr.artist,al:tr.album,y:tr.year,d:Math.max(1,tr.duration_ms/1000),img:tr.art_url,tn:tr.track_number&&tr.album_tracks?tr.track_number+' of '+tr.album_tracks:null,pal:hashPal(tr.id)};
+  var x={id:tr.id,uri:tr.uri,t:tr.title,a:tr.artist,al:tr.album,y:tr.year,d:Math.max(1,tr.duration_ms/1000),off:tr.is_playable===false,img:tr.art_url,tn:tr.track_number&&tr.album_tracks?tr.track_number+' of '+tr.album_tracks:null,pal:hashPal(tr.id)};
   var e=ENR[tr.id];if(e)for(var k in e)x[k]=e[k];return x;
 }
 window.meridian={update:function(s){
@@ -348,6 +361,7 @@ window.meridian={update:function(s){
     showGate(s.status,s);curId=null;st.playing=false;return;
   }
   showGate(null);
+  if(s.user_name)$('avb').textContent=initials(s.user_name);
   var tr=s.track,changed=tr.id!==curId;
   st.playing=s.is_playing;st.shuffle=s.shuffle;st.repeat=Math.max(0,REP.indexOf(s.repeat));st.ctx=s.context_name;
   if(s.volume!=null&&Date.now()-lastVol>1500){if(s.volume>0){st.vol=s.volume;st.muted=false;}else if(!st.muted)st.vol=0;}
@@ -360,7 +374,7 @@ window.meridian={update:function(s){
   blocks.forEach(function(b,k){T.push(mapTrack(b.track));liveSeq.push({i:k,s:(b.start_ms-first)/1000,k:b.kind});if(b.kind==='cur')st.cur=k;});
   st.liked={};st.liked[st.cur]=s.liked;
   if(Date.now()-lastSeek>1500){var lag=s.is_playing?Math.min(5000,Math.max(0,Date.now()-s.fetched_at_ms)):0;st.t=Math.min(T[st.cur].d,(s.progress_ms+lag)/1000);}
-  if(changed){curId=tr.id;renderNow();}else{renderLike();renderStrip();renderTime();}
+  if(changed){curId=tr.id;lastOff=!!T[st.cur].off;renderNow();}else{renderLike();renderStrip();renderTime();if(!!T[st.cur].off!==lastOff){lastOff=!!T[st.cur].off;renderAmbChips();}}
 }};
 window.meridian.enrich=function(e){
   var o=ENR[e.track_id]||(ENR[e.track_id]={done:{},err:{}}),d=e.data;
@@ -408,7 +422,7 @@ window.addEventListener('mousemove',function(e){if(dragX===null)return;var sc=ap
 window.addEventListener('mouseup',function(e){if(dragX===null)return;var wasMoved=moved;dragX=null;tl.classList.remove('drag');if(wasMoved){renderStrip();if(LIVE){lastSeek=Date.now();call('seek',Math.round(st.t*1000));}return;}var b=e.target.closest&&e.target.closest('.blk');if(b)jumpTo(+b.dataset.k);});
 var vol=$('vol');vol.addEventListener('mousedown',function(e){function set(ev){var r=vol.getBoundingClientRect();st.vol=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width));st.muted=false;renderVol();}set(e);function up(){window.removeEventListener('mousemove',set);window.removeEventListener('mouseup',up);if(LIVE)volLive(0);}window.addEventListener('mousemove',set);window.addEventListener('mouseup',up);});
 function openDev(){var pop=$('pop');if(pop.classList.contains('open')){pop.classList.remove('open');return;}
-  pop.innerHTML='<div class="ph"><span class="hd">Play on</span></div>'+DEV.map(function(d,i){return '<div class="it'+(i===st.dev?' on':'')+(d[3]?' off':'')+'" data-d="'+i+'"><div class="ic">'+I[d[0]]+'</div><div><div class="n">'+esc(d[1])+'</div><div class="m">'+esc(d[2])+'</div></div>'+(i===st.dev?eqg():'')+'</div>';}).join('');
+  pop.innerHTML='<div class="ph"><span class="hd">Play on</span></div>'+DEV.map(function(d,i){return '<div class="it'+(i===st.dev?' on':'')+(d[3]?' off':'')+'" tabindex="'+(d[3]?-1:0)+'" role="button" data-d="'+i+'"><div class="ic">'+I[d[0]]+'</div><div><div class="n">'+esc(d[1])+'</div><div class="m">'+esc(d[2])+'</div></div>'+(i===st.dev?eqg():'')+'</div>';}).join('');
   var a=app.getBoundingClientRect(),r=$('devb').getBoundingClientRect(),sc=a.width/1440;pop.classList.add('open');pop.style.left=((r.right-a.left)/sc-300)+'px';pop.style.top=((r.bottom-a.top)/sc+8)+'px';}
 $('devb').onclick=openDev;
 $('pop').onclick=function(e){var it=e.target.closest('.it');if(!it||it.classList.contains('off'))return;st.dev=+it.dataset.d;renderDev();if(LIVE)call('transfer',DEV[st.dev][4]);$('pop').classList.remove('open');};
@@ -416,8 +430,12 @@ document.addEventListener('mousedown',function(e){if(!e.target.closest('#pop')&&
 document.addEventListener('keydown',function(e){
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('cmdb').onclick();return;}
   if(e.target.tagName==='INPUT')return;
+  var tg=e.target;
+  if((e.key==='Enter'||e.code==='Space')&&tg.matches&&tg.matches('[tabindex="0"]:not(button):not(#tl):not(#vol)')){
+    e.preventDefault();if(tg.classList.contains('blk'))jumpTo(+tg.dataset.k);else tg.click();return;}
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
   if(e.key==='/'){e.preventDefault();$('cmdb').onclick();return;}
-  if(e.code==='Space'){e.preventDefault();$('pp').onclick();}
+  if(e.code==='Space'){if(tg.tagName==='BUTTON')return;e.preventDefault();$('pp').onclick();}
   if(e.key==='ArrowRight'){st.t=Math.min(T[st.cur].d-1,st.t+5);renderTime();posStrip();if(LIVE)seekLive();}
   if(e.key==='ArrowLeft'){st.t=Math.max(0,st.t-5);renderTime();posStrip();if(LIVE)seekLive();}
   if(e.key==='ArrowUp'){e.preventDefault();st.vol=Math.min(1,st.vol+.05);renderVol();if(LIVE)volLive();}

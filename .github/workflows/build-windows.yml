@@ -1,0 +1,35 @@
+name: Build Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -r requirements.txt pyinstaller
+      - name: Test
+        run: python -m pytest -q
+      - name: Build
+        run: python -m PyInstaller packaging/meridian.spec --noconfirm
+      - name: Self-check the built app
+        run: .\dist\Meridian\Meridian.exe --selfcheck
+      - name: Zip
+        run: Compress-Archive -Path dist\Meridian -DestinationPath dist\Meridian-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Meridian-windows
+          path: dist/Meridian-windows.zip
+      - name: Attach to the release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Meridian-windows.zip

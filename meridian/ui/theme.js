@@ -1,2 +1,17 @@
-/* Dark/light toggle (bottom right). */
-(function(){var r=document.documentElement;function s(t){r.setAttribute('data-theme',t);document.querySelectorAll('#mtg button').forEach(function(b){b.style.background=b.dataset.th===t?'#f2eee8':'transparent';b.style.color=b.dataset.th===t?'#171513':'#a29c93';});}document.getElementById('mtg').onclick=function(e){var b=e.target.closest('button');if(b)s(b.dataset.th);};s(new URLSearchParams(location.search).get('theme')||'dark');})();
+/* Theme: follows the system until the user picks one. app.js shows the button and saves the choice. */
+(function () {
+  var root = document.documentElement, mq = window.matchMedia && matchMedia('(prefers-color-scheme: light)');
+  var pref = null; /* 'dark' | 'light' | null = follow the system */
+  function effective() { return pref || (mq && mq.matches ? 'light' : 'dark'); }
+  function apply(user) {
+    root.setAttribute('data-theme', effective());
+    document.dispatchEvent(new CustomEvent('meridian-theme', { detail: { theme: effective(), pref: pref, user: !!user } }));
+  }
+  window.meridianTheme = {
+    set: function (t) { pref = (t === 'dark' || t === 'light') ? t : null; apply(false); },
+    toggle: function () { pref = effective() === 'light' ? 'dark' : 'light'; apply(true); },
+    current: effective
+  };
+  if (mq && mq.addEventListener) mq.addEventListener('change', function () { if (!pref) apply(false); });
+  apply(false);
+})();

@@ -55,3 +55,29 @@ Command bar: typing a line from a song's lyrics finds it, if that song's lyrics 
 Enter plays it from that line.
 
 Once Last.fm is linked, Meridian scrobbles what you play (Last.fm's rule: over 30s, and half the song or 4 minutes). Unlink in About to stop.
+
+## Keyboard
+
+| Key | Action |
+| --- | --- |
+| Space | Play / pause (on a focused button, Space presses that button) |
+| Left / Right | Seek 5 seconds |
+| Up / Down | Volume |
+| S / R | Shuffle / repeat |
+| L | Switch Listen and Library |
+| Ctrl+K, Cmd+K or / | Command bar (Esc closes) |
+| Tab, Enter | Move between controls, timeline blocks and library cards, and activate them |
+
+The theme follows your system until you press the sun/moon button in the top bar; your choice is remembered.
+
+## Build the Windows app
+
+Two ways, both produce `Meridian\Meridian.exe` (a folder; no Python needed to run it):
+
+- **On GitHub:** open the repo's **Actions** tab, choose **Build Windows app**, press **Run workflow**. When it finishes, download `Meridian-windows` from the run's Artifacts.
+  Pushing a tag like `v0.1.0` also attaches the zip to a GitHub release.
+- **On your PC:** in PowerShell from the project folder run `.\packaging\build.ps1`.
+
+The packaged app keeps its settings in `C:\Users\<you>\.meridian\`: `.env` (or paste your client ID on the first-run screen), the cache, the log and your saved theme.
+It needs Microsoft Edge WebView2, which Windows 10 and 11 include.
+`Meridian.exe --selfcheck` confirms the bundled files and libraries without opening a window; the build runs it for you.

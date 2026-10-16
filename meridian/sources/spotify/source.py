@@ -15,6 +15,7 @@ LIBRARY_TTL_S = 300
 LIBRARY_CAP = 200  # per section
 SEARCH_LIMIT = 5  # per type
 MAX_SKIPS = 8  # beyond this, jump with start_playback instead of repeated next
+NEVER = float("-inf")  # "not fetched yet" for time.monotonic() stamps (0.0 would depend on system uptime)
 
 REPEAT_MODES = ("off", "context", "track")
 
@@ -94,18 +95,19 @@ class SpotifySource:
         self._liked: dict[str, bool] = {}
         self._past: list[Track] = []
         self._queue: list[Track] = []
-        self._queue_at = 0.0
+        self._queue_at = NEVER
         self._timeline_for: str | None = None  # track id the past/queue caches belong to
         self._past_stale = False
         self._mine: Counter[str] = Counter()  # uris queued from Meridian, not yet played
         self._context_uri: str | None = None
         self._library: Library | None = None
-        self._library_at = 0.0
+        self._library_at = NEVER
         self._user_id: str | None = None
+        self._user_name: str | None = None
 
     # -- state ---------------------------------------------------------
     def poll(self) -> PlayerState:
-        pb = self._sp.current_playback(additional_types="track,episode")
+        pb = self._sp.current_playback(additional_types="track,episode", market="from_token")  # market makes is_playable appear
         devices = self.devices()
         item = pb.get("item") if pb else None
         if not pb or not item:
@@ -129,6 +131,7 @@ class SpotifySource:
             context_name=self._context_name(pb.get("context")),
             liked=self._is_liked(track) if item.get("type") != "episode" else False,
             devices=devices,
+            user_name=self._display_name(),
             timeline=self._timeline(track, int(pb.get("progress_ms") or 0), bool(pb.get("is_playing"))),
         )
 
@@ -172,7 +175,7 @@ class SpotifySource:
         return [parse_track(t) for t in q if t]
 
     def invalidate_queue(self) -> None:
-        self._queue_at = 0.0
+        self._queue_at = NEVER
         self._past_stale = True  # history changes on skip
 
     def _timeline(self, track: Track, progress_ms: int, is_playing: bool):
@@ -267,6 +270,15 @@ class SpotifySource:
             lib.failed.append("artists")
         return out
 
+    def _display_name(self) -> str | None:
+        if self._user_name is None:
+            try:
+                me = self._sp.current_user()
+                self._user_id, self._user_name = me["id"], me.get("display_name") or me["id"]
+            except (spotipy.SpotifyException, KeyError, TypeError):
+                return None
+        return self._user_name
+
     def _user(self) -> str:
         if not self._user_id:
             self._user_id = self._sp.current_user()["id"]
@@ -315,7 +327,7 @@ class SpotifySource:
     def add_to_queue(self, uri: str) -> None:
         self._sp.add_to_queue(uri)
         self._mine[uri] += 1
-        self._queue_at = 0.0
+        self._queue_at = NEVER
 
     def play_track(self, uri: str) -> None:
         """Play a specific track, staying in the current playlist or album when it is part of it."""
