@@ -9,7 +9,10 @@ from meridian import config
 
 log = logging.getLogger(__name__)
 
-ALLOWED = {"theme": {"dark", "light", None}}  # None means follow the system
+ALLOWED = {
+    "theme": {"dark", "light", None},  # None follows the system
+    "covers": {"real", "geo", None},  # real album art, or generated geometric covers; None means real
+}
 
 
 class Settings:

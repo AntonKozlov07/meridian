@@ -12,18 +12,18 @@ from meridian.sources.spotify.source import SpotifySource
 def test_settings_roundtrip_and_validation(tmp_path):
     f = tmp_path / "settings.json"
     s = Settings(f)
-    assert s.get_all() == {"theme": None}
+    assert s.get_all() == {"theme": None, "covers": None}
     assert s.set("theme", "light") and not s.set("theme", "purple") and not s.set("volume", 1)
-    assert Settings(f).get_all() == {"theme": "light"}
-    assert s.set("theme", None) and Settings(f).get_all() == {"theme": None}
+    assert Settings(f).get_all() == {"theme": "light", "covers": None}
+    assert s.set("theme", None) and Settings(f).get_all() == {"theme": None, "covers": None}
 
 
 def test_settings_ignore_a_corrupt_or_hostile_file(tmp_path):
     f = tmp_path / "settings.json"
     f.write_text("{not json", encoding="utf-8")
-    assert Settings(f).get_all() == {"theme": None}
+    assert Settings(f).get_all() == {"theme": None, "covers": None}
     f.write_text(json.dumps({"theme": "<script>", "other": 1}), encoding="utf-8")
-    assert Settings(f).get_all() == {"theme": None}
+    assert Settings(f).get_all() == {"theme": None, "covers": None}
 
 
 def test_api_settings(tmp_path):
@@ -81,3 +81,12 @@ def test_unavailable_current_track_is_flagged():
     st = SpotifySource(sp).poll()
     assert st.track.is_playable is False and st.user_name == "Anton Kozlov"
     assert sp.current_playback.call_args.kwargs["market"] == "from_token"
+
+
+def test_cover_choice_is_saved_and_validated(tmp_path):
+    f = tmp_path / "settings.json"
+    s = Settings(f)
+    assert s.set("covers", "geo") and not s.set("covers", "neon")
+    assert Settings(f).get_all()["covers"] == "geo"
+    api = Api(Config()); api._settings = Settings(f)
+    assert api.get_settings()["covers"] == "geo" and api.set_setting("covers", "real")["ok"]

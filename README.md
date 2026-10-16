@@ -87,3 +87,10 @@ It needs Microsoft Edge WebView2, which Windows 10 and 11 include.
 Windows marks files from a downloaded zip as "from the internet" and can then refuse to load Meridian's libraries
 (the error mentions `pythonnet` or `Python.Runtime.dll`). Either start it with **Start-Meridian.bat** in the Meridian folder,
 or unblock before extracting: right-click the zip, **Properties**, tick **Unblock**, **OK**, then extract.
+
+## Real or geometric covers
+
+The image button in the top bar switches every cover in the app, in one click, between the real album art and Meridian's geometric covers:
+the big cover, the timeline, library cards (albums, playlists, artists) and search results. The choice is remembered.
+A geometric cover is drawn from the song's or album's ID, so the same one always looks the same, wherever it shows up.
+The colour wash behind the player follows whichever covers you are using. Items with no artwork of their own, like Liked Songs, always get a geometric cover.
