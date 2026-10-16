@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 import webview
 
@@ -11,7 +12,9 @@ from meridian.api import Api
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    log_file = Path.home() / ".meridian" / "meridian.log"
+    log_file.parent.mkdir(exist_ok=True)
+    logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler(), logging.FileHandler(log_file, encoding="utf-8")])
     api = Api(config.load())
     window = webview.create_window(
         "Meridian",

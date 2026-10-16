@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+from collections.abc import Callable
 
 import keyring
 import spotipy
 from keyring.errors import KeyringError
 from spotipy.cache_handler import CacheHandler
 from spotipy.oauth2 import SpotifyPKCE
+
+from meridian.sources.spotify.login import run_login
 
 log = logging.getLogger(__name__)
 
@@ -80,9 +84,10 @@ class SpotifyAuth:
             log.info("stored token rejected: %s", e)
             return False
 
-    def login(self) -> None:
-        """Opens the browser and blocks until the user finishes or the callback times out."""
-        self.pkce.get_access_token(check_cache=False)
+    def login(self, on_url: Callable[[str], None] = lambda url: None, cancel: threading.Event | None = None) -> None:
+        """Opens the browser and blocks until the user finishes. Raises LoginError with a usable message."""
+        token = run_login(self.pkce.client_id, self.pkce.redirect_uri, SCOPES, on_url=on_url, cancel=cancel)
+        self.cache.save_token_to_cache(token)
 
     def logout(self) -> None:
         self.cache.clear()

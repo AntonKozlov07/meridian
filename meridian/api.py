@@ -6,16 +6,20 @@ public methods). The page never sees a token or calls an outside API itself.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections.abc import Callable
 
+import requests
 from spotipy import SpotifyException
 
+from meridian import config as config_mod
 from meridian.config import Config
 from meridian.core.poller import Poller
 from meridian.core.source import PlayerSource
-from meridian.core.state import CONNECTING, LOGGED_OUT, SETUP_REQUIRED, PlayerState
+from meridian.core.state import CONNECTING, ERROR, LOGGED_OUT, SETUP_REQUIRED, WAITING, PlayerState
 from meridian.sources.spotify.auth import SpotifyAuth
+from meridian.sources.spotify.login import LoginError
 from meridian.sources.spotify.source import SpotifySource
 
 log = logging.getLogger(__name__)
@@ -30,6 +34,7 @@ class Api:
         self._push: Callable[[dict], None] = lambda s: None
         self._last_track_id: str | None = None
         self._lock = threading.Lock()
+        self._login_cancel: threading.Event | None = None
 
     def _attach(self, push: Callable[[dict], None]) -> None:
         self._push = push
@@ -38,25 +43,54 @@ class Api:
     def boot(self) -> dict:
         """Called once by the page. Resumes a stored session without opening a browser."""
         if not self._cfg.spotify_client_id:
-            return PlayerState(status=SETUP_REQUIRED,
-                               message="Add SPOTIFY_CLIENT_ID to your .env file, then restart.").to_dict()
+            return PlayerState(status=SETUP_REQUIRED).to_dict()
         self._auth = SpotifyAuth(self._cfg.spotify_client_id, self._cfg.spotify_redirect_uri)
         if self._auth.has_session():
             self._start()
             return PlayerState(status=CONNECTING).to_dict()
         return PlayerState(status=LOGGED_OUT).to_dict()
 
+    def save_client_id(self, client_id: str) -> dict:
+        """Saves the client ID typed into the setup screen to .env and carries on with sign-in."""
+        client_id = (client_id or "").strip()
+        if not re.fullmatch(r"[0-9a-fA-F]{32}", client_id):
+            return self._fail("A client ID is 32 letters and numbers. Copy it from your app's page in the Spotify dashboard.")
+        config_mod.save_env_value("SPOTIFY_CLIENT_ID", client_id)
+        self._cfg = config_mod.load()
+        return {"ok": True, "error": None, "state": self.boot()}
+
     def login(self) -> dict:
         """Opens the browser for Spotify consent and blocks until it finishes."""
         if not self._auth:
             return self._fail("Spotify is not configured.")
+        if self._login_cancel and not self._login_cancel.is_set():
+            return self._fail("Sign-in is already open in your browser.")
+        self._login_cancel = cancel = threading.Event()
         try:
-            self._auth.login()
+            self._auth.login(
+                on_url=lambda url: self._push(PlayerState(status=WAITING, message=url).to_dict()),
+                cancel=cancel,
+            )
+        except LoginError as e:
+            return self._login_failed(str(e))
         except Exception as e:
-            log.warning("login failed: %s", e)
-            return self._fail("Spotify login did not finish. Try again.")
+            log.exception("login crashed")
+            return self._login_failed(f"Sign-in failed unexpectedly ({type(e).__name__}: {e}). See the log for details.")
+        finally:
+            cancel.set()
         self._start()
+        self._push(PlayerState(status=CONNECTING).to_dict())
         return self._ok()
+
+    def cancel_login(self) -> dict:
+        if self._login_cancel:
+            self._login_cancel.set()
+        return self._ok()
+
+    def _login_failed(self, msg: str) -> dict:
+        log.warning("login failed: %s", msg)
+        self._push(PlayerState(status=LOGGED_OUT, message=msg).to_dict())
+        return self._fail(msg)
 
     def logout(self) -> dict:
         if self._poller:
@@ -72,8 +106,28 @@ class Api:
         self._source = SpotifySource(self._auth.client())
         if self._poller:
             self._poller.stop()
-        self._poller = Poller(self._source, lambda s: self._push(s.to_dict()))
+        self._poller = Poller(self._source, lambda s: self._push(s.to_dict()), on_error=self._poll_failed)
         self._poller.start()
+
+    def _poll_failed(self, exc: Exception, failures: int) -> None:
+        """Turns a failing poll into a screen that says why, instead of an endless spinner."""
+        if isinstance(exc, SpotifyException) and exc.http_status == 401:
+            if self._auth:
+                self._auth.logout()
+            self._push(PlayerState(status=LOGGED_OUT, message="Your Spotify session expired. Connect again.").to_dict())
+        elif isinstance(exc, SpotifyException) and exc.http_status == 403:
+            self._push(PlayerState(status=ERROR, message=(
+                "Spotify refused this account. While your app is in development mode, only people added under "
+                "User Management in the Spotify dashboard can use it. Add your Spotify email there, then try again."
+            )).to_dict())
+        elif isinstance(exc, SpotifyException) and exc.http_status == 429:
+            pass  # the poller already waits out Retry-After
+        elif failures >= 2:
+            offline = isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout))
+            self._push(PlayerState(status=ERROR, message=(
+                "Cannot reach Spotify. Check your internet connection." if offline
+                else f"Spotify is not responding as expected ({type(exc).__name__})."
+            )).to_dict())
 
     # -- transport -----------------------------------------------------
     def set_playing(self, playing: bool) -> dict:

@@ -23,6 +23,26 @@ class Config:
     musicbrainz_user_agent: str = "Meridian/0.1 (contact not set)"
 
 
+ENV_PATH = ROOT / ".env"
+
+
+def save_env_value(key: str, value: str, path: Path = ENV_PATH) -> None:
+    """Sets KEY=value in .env (creating it), keeping every other line, and in this process."""
+    lines = path.read_text().splitlines() if path.exists() else []
+    out, done = [], False
+    for line in lines:
+        if line.split("=", 1)[0].strip() == key:
+            if not done:
+                out.append(f"{key}={value}")
+            done = True
+        else:
+            out.append(line)
+    if not done:
+        out.append(f"{key}={value}")
+    path.write_text("\n".join(out) + "\n")
+    os.environ[key] = value
+
+
 def load() -> Config:
     g = os.environ.get
     return Config(

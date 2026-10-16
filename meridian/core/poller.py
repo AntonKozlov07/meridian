@@ -15,7 +15,9 @@ log = logging.getLogger(__name__)
 
 
 class Poller:
-    def __init__(self, source: PlayerSource, push: Callable[[PlayerState], None], interval: float = 5.0):
+    def __init__(self, source: PlayerSource, push: Callable[[PlayerState], None], interval: float = 5.0,
+                 on_error: Callable[[Exception, int], None] | None = None):
+        self._on_error = on_error
         self._source = source
         self._push = push
         self._interval = interval
@@ -42,12 +44,17 @@ class Poller:
             self._wake.set()
 
     def _run(self) -> None:
+        failures = 0
         while not self._stop.is_set():
             wait = self._interval
             try:
                 self._push(self._source.poll())
+                failures = 0
             except Exception as e:  # keep the loop alive; the UI keeps its last state
-                log.warning("poll failed: %s", e)
+                failures += 1
+                log.warning("poll failed (%d in a row): %s", failures, e)
+                if self._on_error:
+                    self._on_error(e, failures)
                 wait = retry_after(e) or self._interval * 2
             self._wake.wait(wait)
             self._wake.clear()

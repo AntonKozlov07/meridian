@@ -222,28 +222,41 @@ function seekLive(){lastSeek=Date.now();clearTimeout(seekT);seekT=setTimeout(fun
 function volLive(ms){lastVol=Date.now();clearTimeout(volT);volT=setTimeout(function(){call('set_volume',Math.round((st.muted?0:st.vol)*100));},ms==null?250:ms);}
 var GATES={
   connecting:['radio','Connecting to Spotify','Looking for what is playing.'],
-  waiting:['radio','Finish in your browser','Approve Meridian in the Spotify window that just opened.'],
+  waiting:['radio','Finish in your browser','Approve Meridian in the Spotify tab that just opened. If no tab opened, use the link below.'],
   logged_out:['radio','Connect Spotify','Meridian shows and controls what is playing on your Spotify devices. Playback control needs Spotify Premium.','Connect Spotify','login'],
-  setup_required:['sliders','Add your Spotify client ID','','',''],
+  setup_required:['sliders','Set up Spotify','Meridian needs a free Spotify developer app. 1. Open developer.spotify.com/dashboard and create an app. 2. Under Redirect URIs add the address below and press Save. 3. Copy the app’s Client ID and paste it here.'],
+  error:['radio','Spotify connection problem','','Try again','refresh'],
   no_device:['devices','No active device','Open Spotify on this computer, a phone or a speaker and press play, or pick a device below.','Check again','refresh']
 };
+var REDIRECT='http://127.0.0.1:8888/callback';
 function showGate(kind,s){
   var g=$('gate');if(!kind){g.hidden=true;app.classList.remove('gated');return;}
-  var d=GATES[kind],msg=(kind==='setup_required'&&s&&s.message)||d[2];
-  var devs=kind==='no_device'&&s&&s.devices?s.devices.filter(function(x){return !x.is_restricted;}).map(function(x){return '<button class="btn" data-dev="'+esc(x.id)+'">'+I[devIcon(x.type)]+esc(x.name)+'</button>';}).join(''):'';
-  g.innerHTML='<div class="gate-in"><div class="empty"><div class="ic">'+I[d[0]]+'</div><h4>'+d[1]+'</h4><p>'+esc(msg)+'</p></div>'+(devs?'<div class="gate-devs">'+devs+'</div>':'')+(d[3]?'<div class="gate-acts"><button class="btn primary" data-act="'+d[4]+'">'+d[3]+'</button></div>':'')+'</div>';
+  var d=GATES[kind],msg=d[2],extra='',acts='';
+  if(kind==='error')msg=(s&&s.message)||'Something went wrong.';
+  if(kind==='no_device'&&s&&s.devices){var dv=s.devices.filter(function(x){return !x.is_restricted;}).map(function(x){return '<button class="btn" data-dev="'+esc(x.id)+'">'+I[devIcon(x.type)]+esc(x.name)+'</button>';}).join('');if(dv)extra='<div class="gate-devs">'+dv+'</div>';}
+  if(kind==='logged_out'&&s&&s.message)extra='<p class="gate-err">'+esc(s.message)+'</p>';
+  if(kind==='waiting'){var u=(s&&s.message)||'';extra='<div class="gate-link mono" id="glink">'+esc(u)+'</div>';acts='<button class="btn" data-act="copy">Copy link</button><button class="btn" data-act="cancel">Cancel</button>';}
+  if(kind==='setup_required'){extra='<div class="gate-link mono">'+REDIRECT+'</div><form class="gate-form" id="cidform"><input id="cid" class="gate-in-text mono" placeholder="Paste your Client ID" autocomplete="off" spellcheck="false"><button class="btn primary" type="submit">Save and continue</button></form>'+((s&&s.message)?'<p class="gate-err">'+esc(s.message)+'</p>':'');}
+  if(kind==='error')acts='<button class="btn primary" data-act="refresh">Try again</button><button class="btn" data-act="logout">Disconnect</button>';
+  else if(d[3])acts='<button class="btn primary" data-act="'+d[4]+'">'+d[3]+'</button>';
+  g.innerHTML='<div class="gate-in"><div class="empty"><div class="ic">'+I[d[0]]+'</div><h4>'+d[1]+'</h4><p>'+esc(msg)+'</p></div>'+extra+(acts?'<div class="gate-acts">'+acts+'</div>':'')+'</div>';
   g.hidden=false;app.classList.add('gated');
+  var inp=$('cid');if(inp)setTimeout(function(){inp.focus();},0);
 }
 $('gate').onclick=function(e){
   var dv=e.target.closest('[data-dev]');if(dv){call('transfer',dv.dataset.dev);return;}
-  var b=e.target.closest('[data-act]');if(!b)return;
-  if(b.dataset.act==='refresh'){call('refresh');return;}
-  showGate('waiting');
-  var a=apiObj();a.login().then(function(r){if(r&&r.ok===false){toast(r.error);showGate('logged_out');}}).catch(function(){showGate('logged_out');});
+  var b=e.target.closest('[data-act]');if(!b)return;var act=b.dataset.act;
+  if(act==='refresh'){call('refresh');return;}
+  if(act==='cancel'){call('cancel_login');return;}
+  if(act==='logout'){call('logout');return;}
+  if(act==='copy'){var t=$('glink').textContent;try{navigator.clipboard.writeText(t).then(function(){toast('Link copied.');},function(){toast('Select the link and copy it by hand.');});}catch(x){toast('Select the link and copy it by hand.');}return;}
+  if(act==='login'){showGate('waiting',{message:''});
+    var a=apiObj();a.login().then(function(r){if(r&&r.ok===false)toast(r.error);}).catch(function(){showGate('logged_out',{message:'Lost contact with Meridian.'});});}
 };
-document.querySelector('.av').title='Disconnect Spotify';
-document.querySelector('.av').style.cursor='pointer';
-document.querySelector('.av').onclick=function(){if(LIVE&&window.confirm('Disconnect Spotify?'))call('logout');};
+$('gate').addEventListener('submit',function(e){e.preventDefault();
+  var v=$('cid').value;var a=apiObj();if(!a)return;
+  a.save_client_id(v).then(function(r){if(r.ok===false){showGate('setup_required',{message:r.error});return;}if(r.state)window.meridian.update(r.state);});
+});
 function devIcon(t){t=(t||'').toLowerCase();return t==='computer'?'laptop':t==='smartphone'||t==='tablet'?'phone':'speaker';}
 function hashPal(id){var h=0;for(var i=0;i<id.length;i++)h=(h*31+id.charCodeAt(i))|0;return PAL[Math.abs(h)%PAL.length];}
 function bootLive(){

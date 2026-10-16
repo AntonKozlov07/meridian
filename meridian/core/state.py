@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass, field
 
 # status values: what the UI shows instead of the player
 SETUP_REQUIRED = "setup_required"  # no client id configured
+WAITING = "waiting"  # browser sign-in in progress; message holds the link
+ERROR = "error"  # signed in but Spotify is refusing or unreachable; message says why
 CONNECTING = "connecting"  # session found, first poll not back yet
 LOGGED_OUT = "logged_out"
 NO_DEVICE = "no_device"
