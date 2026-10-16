@@ -20,9 +20,9 @@ def test_settings_roundtrip_and_validation(tmp_path):
 
 def test_settings_ignore_a_corrupt_or_hostile_file(tmp_path):
     f = tmp_path / "settings.json"
-    f.write_text("{not json")
+    f.write_text("{not json", encoding="utf-8")
     assert Settings(f).get_all() == {"theme": None}
-    f.write_text(json.dumps({"theme": "<script>", "other": 1}))
+    f.write_text(json.dumps({"theme": "<script>", "other": 1}), encoding="utf-8")
     assert Settings(f).get_all() == {"theme": None}
 
 
@@ -41,7 +41,7 @@ def test_packaged_app_keeps_its_env_in_the_user_folder(monkeypatch, tmp_path):
         assert c.FROZEN and c.UI_DIR == tmp_path / "bundle" / "meridian" / "ui"
         assert c.ENV_PATH == tmp_path / ".meridian" / ".env"
         c.save_env_value("SPOTIFY_CLIENT_ID", "x", c.ENV_PATH)  # creates the folder too
-        assert c.ENV_PATH.read_text() == "SPOTIFY_CLIENT_ID=x\n"
+        assert c.ENV_PATH.read_text(encoding="utf-8") == "SPOTIFY_CLIENT_ID=x\n"
     finally:
         monkeypatch.undo()
         importlib.reload(config)
@@ -63,12 +63,12 @@ def test_selfcheck_reports_missing_files_and_modules(monkeypatch, tmp_path, caps
 
 def test_fonts_are_bundled_and_no_stylesheet_calls_the_network():
     ui = config.UI_DIR
-    css = (ui / "fonts.css").read_text()
+    css = (ui / "fonts.css").read_text(encoding="utf-8")
     for name in __import__("re").findall(r"url\(fonts/([^)]+)\)", css):
         assert (ui / "fonts" / name).stat().st_size > 1000, name
     for f in ui.glob("*.css"):
-        assert "googleapis" not in f.read_text() and "http" not in f.read_text().replace("http://www.w3.org", ""), f.name
-    assert not (ui / "fonts" / "OFL.txt").exists() or "404" not in (ui / "fonts" / "OFL.txt").read_text()
+        assert "googleapis" not in f.read_text(encoding="utf-8") and "http" not in f.read_text(encoding="utf-8").replace("http://www.w3.org", ""), f.name
+    assert not (ui / "fonts" / "OFL.txt").exists() or "404" not in (ui / "fonts" / "OFL.txt").read_text(encoding="utf-8")
 
 
 def test_unavailable_current_track_is_flagged():

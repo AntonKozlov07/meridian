@@ -17,7 +17,7 @@ class Settings:
         self._path = path or config.DATA_DIR / "settings.json"
         self._data: dict = {}
         try:
-            loaded = json.loads(self._path.read_text())
+            loaded = json.loads(self._path.read_text(encoding="utf-8"))
             if isinstance(loaded, dict):
                 self._data = {k: v for k, v in loaded.items() if k in ALLOWED and v in ALLOWED[k]}
         except (OSError, ValueError):
@@ -32,7 +32,7 @@ class Settings:
         self._data[key] = value
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_text(json.dumps(self._data))
+            self._path.write_text(json.dumps(self._data), encoding="utf-8")
         except OSError as e:
             log.warning("could not save settings: %s", e)
         return True

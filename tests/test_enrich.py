@@ -119,7 +119,7 @@ def test_getsongbpm_no_result_shape_is_a_miss():
 # ---- credits (real MusicBrainz response for Yellow Submarine) ----------------
 
 def test_build_groups_from_real_musicbrainz_json():
-    groups = dict((g[0], g[1]) for g in credits.build_groups(json.loads((FIX / "mb_recording.json").read_text())))
+    groups = dict((g[0], g[1]) for g in credits.build_groups(json.loads((FIX / "mb_recording.json").read_text(encoding="utf-8"))))
     perf = dict((n, r) for n, r in groups["Performed by"])
     assert list(perf)[0] == "The Beatles"  # credited artist leads
     assert perf["George Harrison"] and "tambourine" in perf["George Harrison"] and "background vocals" in perf["George Harrison"]
@@ -135,7 +135,7 @@ def test_credits_without_relationships_is_a_miss():
 
 def test_fetch_credits_two_requests_and_picks_closest_length(monkeypatch):
     monkeypatch.setattr(credits, "MIN_INTERVAL", 0)
-    rec = json.loads((FIX / "mb_recording.json").read_text()); seen = []
+    rec = json.loads((FIX / "mb_recording.json").read_text(encoding="utf-8")); seen = []
     def h(req):
         seen.append(req.url.path)
         if "/isrc/" in req.url.path:

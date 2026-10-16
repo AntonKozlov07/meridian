@@ -126,7 +126,7 @@ def test_token_endpoint_errors_are_translated():
 
 def test_save_client_id_validates_and_writes_env(tmp_path, monkeypatch):
     env = tmp_path / ".env"
-    env.write_text("# keep me\nSPOTIFY_CLIENT_ID=\nLASTFM_API_KEY=abc\n")
+    env.write_text("# keep me\nSPOTIFY_CLIENT_ID=\nLASTFM_API_KEY=abc\n", encoding="utf-8")
     monkeypatch.setattr(config, "ENV_PATH", env)
     real = config.save_env_value
     monkeypatch.setattr(config, "save_env_value", lambda k, v, path=env: real(k, v, path))
@@ -134,7 +134,7 @@ def test_save_client_id_validates_and_writes_env(tmp_path, monkeypatch):
     assert api.save_client_id("not a client id")["ok"] is False
     r = api.save_client_id("73d1900818c24bc79d0a1b7251af6372")
     assert r["ok"] is True and r["state"]["status"] in (SETUP_REQUIRED, LOGGED_OUT, "connecting")
-    text = env.read_text()
+    text = env.read_text(encoding="utf-8")
     assert "SPOTIFY_CLIENT_ID=73d1900818c24bc79d0a1b7251af6372" in text and "# keep me" in text and "LASTFM_API_KEY=abc" in text
     assert text.count("SPOTIFY_CLIENT_ID") == 1
 
@@ -142,7 +142,7 @@ def test_save_client_id_validates_and_writes_env(tmp_path, monkeypatch):
 def test_save_env_value_creates_file(tmp_path):
     p = tmp_path / ".env"
     config.save_env_value("K", "v", p)
-    assert p.read_text() == "K=v\n"
+    assert p.read_text(encoding="utf-8") == "K=v\n"
 
 
 def test_login_failure_pushes_message_and_returns_error(monkeypatch):

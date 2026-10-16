@@ -33,7 +33,7 @@ class Config:
 def save_env_value(key: str, value: str, path: Path = ENV_PATH) -> None:
     """Sets KEY=value in .env (creating it), keeping every other line, and in this process."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = path.read_text().splitlines() if path.exists() else []
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     out, done = [], False
     for line in lines:
         if line.split("=", 1)[0].strip() == key:
@@ -44,7 +44,7 @@ def save_env_value(key: str, value: str, path: Path = ENV_PATH) -> None:
             out.append(line)
     if not done:
         out.append(f"{key}={value}")
-    path.write_text("\n".join(out) + "\n")
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
     os.environ[key] = value
 
 
