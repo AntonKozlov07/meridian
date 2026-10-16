@@ -1,0 +1,12 @@
+/* Live-mode additions: connection gate and toast. Tokens only. */
+.gate{position:absolute;top:64px;left:0;right:0;bottom:0;display:grid;place-items:center;z-index:5}
+.gate[hidden]{display:none}
+.gate-in{width:420px}
+.gate-in .empty{padding:0}
+.gate-in .empty p{max-width:380px}
+.gate-devs,.gate-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.gated .main,.gated .ctrl,.gated .tl{visibility:hidden}
+.toast{position:absolute;left:50%;bottom:196px;transform:translate(-50%,8px);max-width:560px;padding:10px 14px;border-radius:var(--radius-2);background:var(--bg-200);color:var(--ink);box-shadow:var(--shadow-pop);font-size:13px;line-height:18px;opacity:0;pointer-events:none;transition:opacity 160ms ease,transform 160ms ease;z-index:30}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+.ttl{overflow-wrap:anywhere}

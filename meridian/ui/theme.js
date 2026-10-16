@@ -1,0 +1,2 @@
+/* Dark/light toggle (bottom right). */
+(function(){var r=document.documentElement;function s(t){r.setAttribute('data-theme',t);document.querySelectorAll('#mtg button').forEach(function(b){b.style.background=b.dataset.th===t?'#f2eee8':'transparent';b.style.color=b.dataset.th===t?'#171513':'#a29c93';});}document.getElementById('mtg').onclick=function(e){var b=e.target.closest('button');if(b)s(b.dataset.th);};s(new URLSearchParams(location.search).get('theme')||'dark');})();

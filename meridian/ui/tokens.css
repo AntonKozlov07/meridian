@@ -1,0 +1,48 @@
+/* Meridian design tokens. Generated from tokens.json. Dark is the default theme. */
+:root, [data-theme="dark"] {
+  --bg-000: #090807;
+  --bg-100: #131210;
+  --bg-200: #1c1a18;
+  --fill-1: rgba(236,231,223,0.06);
+  --fill-2: rgba(236,231,223,0.10);
+  --fill-track: rgba(236,231,223,0.18);
+  --line: rgba(236,231,223,0.08);
+  --ink: #f2eee8;
+  --ink-muted: #a29c93;
+  --ink-faint: #6b665f;
+  --accent: #eaa94e;
+  --accent-ink: #171513;
+  --danger: #ec7356;
+  --shadow-pop: 0 24px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(236,231,223,0.08);
+  --shadow-art: 0 30px 80px rgba(0,0,0,0.5);
+}
+[data-theme="light"] {
+  --bg-000: #ebe7e1;
+  --bg-100: #faf9f7;
+  --bg-200: #f2efeb;
+  --fill-1: rgba(26,24,21,0.05);
+  --fill-2: rgba(26,24,21,0.08);
+  --fill-track: rgba(26,24,21,0.16);
+  --line: rgba(26,24,21,0.08);
+  --ink: #171513;
+  --ink-muted: #615b53;
+  --ink-faint: #9a948b;
+  --accent: #9b6414;
+  --accent-ink: #faf9f7;
+  --danger: #b3401f;
+  --shadow-pop: 0 24px 60px rgba(26,24,21,0.16), 0 0 0 1px rgba(26,24,21,0.08);
+  --shadow-art: 0 30px 70px rgba(26,24,21,0.22);
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 48px;
+  --radius-1: 6px;
+  --radius-2: 10px;
+  --radius-3: 16px;
+  --font-sans: Geist, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, Menlo, monospace;
+}

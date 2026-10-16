@@ -1,0 +1,56 @@
+"""Plain data the UI renders. Everything here is JSON-serialisable via to_dict()."""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+
+# status values: what the UI shows instead of the player
+SETUP_REQUIRED = "setup_required"  # no client id configured
+CONNECTING = "connecting"  # session found, first poll not back yet
+LOGGED_OUT = "logged_out"
+NO_DEVICE = "no_device"
+READY = "ready"
+
+
+@dataclass
+class Track:
+    id: str
+    uri: str
+    title: str
+    artist: str
+    album: str
+    year: int | None
+    duration_ms: int
+    art_url: str | None
+    is_playable: bool = True
+    isrc: str | None = None
+    track_number: int | None = None
+    album_tracks: int | None = None
+
+
+@dataclass
+class Device:
+    id: str
+    name: str
+    type: str
+    is_active: bool
+    is_restricted: bool = False
+    volume: float | None = None  # 0..1
+
+
+@dataclass
+class PlayerState:
+    status: str = LOGGED_OUT
+    track: Track | None = None
+    is_playing: bool = False
+    progress_ms: int = 0
+    fetched_at_ms: int = 0  # wall clock when progress_ms was read; the UI interpolates from it
+    shuffle: bool = False
+    repeat: str = "off"  # off | context | track
+    volume: float | None = None
+    context_name: str | None = None
+    liked: bool = False
+    devices: list[Device] = field(default_factory=list)
+    message: str | None = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
