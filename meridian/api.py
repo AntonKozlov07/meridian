@@ -39,6 +39,12 @@ class Api:
     def _attach(self, push: Callable[[dict], None]) -> None:
         self._push = push
 
+    def _shutdown(self) -> None:
+        """Window closed: stop polling and stop pushing into a page that no longer exists."""
+        self._push = lambda s: None
+        if self._poller:
+            self._poller.stop()
+
     # -- session -------------------------------------------------------
     def boot(self) -> dict:
         """Called once by the page. Resumes a stored session without opening a browser."""

@@ -1,7 +1,6 @@
 /* Step 2: static mock data. Later steps replace T/hist/userQ/ctxQ with state pushed from Python. */
 (function(){
-var LIVE=!!window.pywebview;
-if(!LIVE)window.addEventListener('pywebviewready',function(){location.reload();});
+var LIVE=false; /* set once the desktop bridge (window.pywebview.api) is up; stays false in a plain browser preview */
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 var S='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">';
 var F='<svg viewBox="0 0 24 24" fill="currentColor">';
@@ -264,7 +263,7 @@ function bootLive(){
   T.push({t:'',a:'',al:'',y:null,d:1});st.cur=0;st.t=0;st.playing=false;st.liked={};st.ctx=null;st.dev=0;
   renderTrans();renderVol();renderDev();showGate('connecting');
   function run(){window.pywebview.api.boot().then(window.meridian.update);}
-  if(apiObj())run();else window.addEventListener('pywebviewready',run);
+  run();
 }
 function mapTrack(tr){
   var x={id:tr.id,uri:tr.uri,t:tr.title,a:tr.artist,al:tr.album,y:tr.year,d:Math.max(1,tr.duration_ms/1000),img:tr.art_url,tn:tr.track_number&&tr.album_tracks?tr.track_number+' of '+tr.album_tracks:null,pal:hashPal(tr.id)};
@@ -330,7 +329,20 @@ document.addEventListener('keydown',function(e){
   if(e.key==='ArrowDown'){e.preventDefault();st.vol=Math.max(0,st.vol-.05);renderVol();if(LIVE)volLive();}
   if(e.key==='s')$('shuf').click();if(e.key==='r')$('rep').click();if(e.key==='l')setView(st.view==='listen'?'library':'listen');
   if(e.key==='Escape'){$('pop').classList.remove('open');closePal();}});
-setView('listen');if(LIVE)bootLive();else{renderNow();renderTrans();renderVol();renderDev();}
+setView('listen');
+/* pywebview injects its bridge after the page's scripts have run, so wait for it instead of guessing.
+   No bridge within 1.5s means a plain browser: show the demo. */
+(function(){
+  var started=false,t0=Date.now();
+  function goLive(){if(started)return;started=true;LIVE=true;bootLive();}
+  function goDemo(){if(started)return;started=true;$('gate').hidden=true;app.classList.remove('gated');renderNow();renderTrans();renderVol();renderDev();}
+  showGate('connecting');
+  window.addEventListener('pywebviewready',function(){if(apiObj())goLive();});
+  var iv=setInterval(function(){
+    if(apiObj()){clearInterval(iv);goLive();}
+    else if(Date.now()-t0>1500){clearInterval(iv);goDemo();}
+  },50);
+})();
 setInterval(function(){if(!st.playing||dragX!==null)return;st.t+=.25;if(st.t>=T[st.cur].d){if(LIVE){st.t=T[st.cur].d;if(Date.now()-lastEnd>2000){lastEnd=Date.now();call('refresh');}return;}advance();return;}renderTime();posStrip();},250);
 })();
 

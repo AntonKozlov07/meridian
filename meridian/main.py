@@ -26,9 +26,13 @@ def main() -> None:
     )
 
     def push(state: dict) -> None:
-        window.evaluate_js(f"window.meridian && window.meridian.update({json.dumps(state)})")
+        try:
+            window.evaluate_js(f"window.meridian && window.meridian.update({json.dumps(state)})")
+        except Exception as e:  # window closing or page still loading: the next poll will resend
+            logging.getLogger(__name__).debug("push skipped: %s", e)
 
     api._attach(push)
+    window.events.closing += api._shutdown
     webview.start()
 
 
