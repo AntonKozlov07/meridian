@@ -100,6 +100,8 @@ class SpotifySource:
         self._past_stale = False
         self._mine: Counter[str] = Counter()  # uris queued from Meridian, not yet played
         self._context_uri: str | None = None
+        self._device_id: str | None = None  # the device Spotify reported active at the last poll
+        self._last_device_id: str | None = None  # the last one that was ever active: where to resume
         self._library: Library | None = None
         self._library_at = NEVER
         self._user_id: str | None = None
@@ -111,11 +113,14 @@ class SpotifySource:
         devices = self.devices()
         item = pb.get("item") if pb else None
         if not pb or not item:
+            self._device_id = (pb or {}).get("device", {}).get("id") if pb else None
             return PlayerState(status=NO_DEVICE, devices=devices, fetched_at_ms=_now_ms(),
                                is_playing=bool(pb and pb.get("is_playing")),
                                message=None if pb is None else "Nothing is loaded on the active device.")
         track = parse_track(item)
         self._context_uri = (pb.get("context") or {}).get("uri")
+        self._device_id = (pb.get("device") or {}).get("id")
+        self._last_device_id = self._device_id or self._last_device_id
         self._refresh_timeline_data(track)
         device = pb.get("device") or {}
         vol = device.get("volume_percent")
@@ -296,22 +301,42 @@ class SpotifySource:
         cols += [parse_artist(a) for a in (r.get("artists") or {}).get("items", []) if a]
         return SearchResults(query=q, songs=songs, collections=cols)
 
+    def _start(self, **kw) -> None:
+        """start_playback aimed at a specific device, never at "whatever Spotify picks".
+
+        Without a device_id Spotify chooses, and when the phone has dropped out as the active device
+        the request lands nowhere or on the wrong device. If the target no longer answers, wake the last
+        device we used (or the first controllable one) instead of giving up.
+        """
+        target = self._device_id or self._last_device_id
+        try:
+            self._sp.start_playback(device_id=target, **kw) if target else self._sp.start_playback(**kw)
+        except spotipy.SpotifyException as e:
+            if not _device_gone(e):
+                raise
+            devices = [d for d in self.devices() if d.id and not d.is_restricted]
+            fallback = next((d for d in devices if d.id == self._last_device_id), None) or (devices[0] if devices else None)
+            if fallback is None:
+                raise
+            self._sp.start_playback(device_id=fallback.id, **kw)
+            self._device_id = self._last_device_id = fallback.id
+
     def play_uri(self, uri: str, kind: str) -> None:
         """Play a song on its own, or an album, playlist, artist or Liked Songs from the top."""
         if kind in ("track", "episode"):
-            self._sp.start_playback(uris=[uri])
+            self._start(uris=[uri])
         else:
-            self._sp.start_playback(context_uri=uri)
+            self._start(context_uri=uri)
         self.invalidate_queue()
 
     def play_at(self, uri: str, position_ms: int) -> None:
         """Play a song starting part-way in, e.g. from a lyric-line search hit."""
-        self._sp.start_playback(uris=[uri], position_ms=max(0, int(position_ms)))
+        self._start(uris=[uri], position_ms=max(0, int(position_ms)))
         self.invalidate_queue()
 
     # -- controls ------------------------------------------------------
     def play(self) -> None:
-        self._sp.start_playback()
+        self._start()
 
     def pause(self) -> None:
         self._sp.pause_playback()
@@ -333,12 +358,12 @@ class SpotifySource:
         """Play a specific track, staying in the current playlist or album when it is part of it."""
         if self._context_uri:
             try:
-                self._sp.start_playback(context_uri=self._context_uri, offset={"uri": uri})
+                self._start(context_uri=self._context_uri, offset={"uri": uri})
                 self.invalidate_queue()
                 return
             except spotipy.SpotifyException:
                 pass  # not in that context (e.g. a queued song): play it on its own
-        self._sp.start_playback(uris=[uri])
+        self._start(uris=[uri])
         self.invalidate_queue()
 
     def jump_ahead(self, steps: int, uri: str) -> None:
@@ -376,6 +401,11 @@ class SpotifySource:
     def set_saved(self, track_id: str, saved: bool) -> None:
         (self._sp.current_user_saved_tracks_add if saved else self._sp.current_user_saved_tracks_delete)([track_id])
         self._liked[track_id] = saved
+
+
+def _device_gone(e: spotipy.SpotifyException) -> bool:
+    """404 NO_ACTIVE_DEVICE / "Device not found": the target went idle. Other 404s (e.g. track not in that playlist) are not this."""
+    return e.http_status == 404 and ((getattr(e, "reason", "") or "").upper() == "NO_ACTIVE_DEVICE" or "device not found" in str(e).lower())
 
 
 def _now_ms() -> int:

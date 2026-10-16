@@ -1,3 +1,4 @@
+import spotipy
 from unittest.mock import MagicMock
 
 import pytest
@@ -144,11 +145,11 @@ def test_play_track_prefers_context_then_falls_back():
     import spotipy
     sp, src = make(); src.poll()
     src.play_track("spotify:track:z")
-    sp.start_playback.assert_called_with(context_uri="spotify:playlist:p1", offset={"uri": "spotify:track:z"})
+    sp.start_playback.assert_called_with(device_id="d1", context_uri="spotify:playlist:p1", offset={"uri": "spotify:track:z"})
     sp.start_playback.reset_mock()
     sp.start_playback.side_effect = [spotipy.SpotifyException(404, -1, "not in context"), None]
     src.play_track("spotify:track:z")
-    sp.start_playback.assert_called_with(uris=["spotify:track:z"])
+    sp.start_playback.assert_called_with(device_id="d1", uris=["spotify:track:z"])
 
 
 def test_jump_ahead_skips_n_times_or_replays_when_far(monkeypatch):
@@ -159,3 +160,39 @@ def test_jump_ahead_skips_n_times_or_replays_when_far(monkeypatch):
     sp.next_track.reset_mock()
     src.jump_ahead(12, "spotify:track:z")
     assert sp.next_track.call_count == 0 and sp.start_playback.called
+
+
+def test_play_targets_the_active_device_explicitly():
+    sp, src = make(); src.poll()
+    src.play_uri("spotify:track:s1", "track")
+    sp.start_playback.assert_called_with(device_id="d1", uris=["spotify:track:s1"])
+    src.play_at("spotify:track:s1", 5000); sp.start_playback.assert_called_with(device_id="d1", uris=["spotify:track:s1"], position_ms=5000)
+    src.play(); sp.start_playback.assert_called_with(device_id="d1")
+
+
+def test_idle_phone_is_woken_instead_of_failing():
+    """The phone dropped out as active: Spotify answers NO_ACTIVE_DEVICE. Meridian retries on the last device it used."""
+    sp, src = make(); src.poll()  # d1 (Laptop) active and remembered
+    sp.current_playback.return_value = None; src.poll()  # now nothing is active
+    sp.devices.return_value = {"devices": [{"id": "phone", "name": "Phone", "type": "Smartphone", "is_active": False},
+                                           {"id": "d1", "name": "Laptop", "type": "Computer", "is_active": False}]}
+    gone = spotipy.SpotifyException(404, -1, "Device not found", reason="NO_ACTIVE_DEVICE")
+    sp.start_playback.side_effect = [gone, None]
+    src.play_uri("spotify:track:s1", "track")
+    assert [c.kwargs["device_id"] for c in sp.start_playback.call_args_list] == ["d1", "d1"]  # last-used device, not "whatever"
+
+
+def test_other_404s_are_not_mistaken_for_a_missing_device():
+    sp, src = make(); src.poll()
+    sp.start_playback.side_effect = spotipy.SpotifyException(404, -1, "Track not in context", reason="")
+    with pytest.raises(spotipy.SpotifyException):
+        src._start(uris=["x"])
+    assert sp.start_playback.call_count == 1 and sp.devices.call_count == 1  # the one device list is poll()'s
+
+
+def test_no_device_to_wake_raises_a_clear_error():
+    sp, src = make(playback=None); src.poll()
+    sp.devices.return_value = {"devices": []}
+    sp.start_playback.side_effect = spotipy.SpotifyException(404, -1, "x", reason="NO_ACTIVE_DEVICE")
+    with pytest.raises(spotipy.SpotifyException):
+        src.play_uri("spotify:track:s1", "track")
