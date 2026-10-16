@@ -27,6 +27,7 @@ class Track:
     isrc: str | None = None
     track_number: int | None = None
     album_tracks: int | None = None
+    artists: list[str] = field(default_factory=list)  # individual artist names; `artist` is them joined
 
 
 @dataclass

@@ -31,7 +31,13 @@ def main() -> None:
         except Exception as e:  # window closing or page still loading: the next poll will resend
             logging.getLogger(__name__).debug("push skipped: %s", e)
 
-    api._attach(push)
+    def push_enrich(e: dict) -> None:
+        try:
+            window.evaluate_js(f"window.meridian && window.meridian.enrich({json.dumps(e)})")
+        except Exception as ex:
+            logging.getLogger(__name__).debug("enrich push skipped: %s", ex)
+
+    api._attach(push, push_enrich)
     window.events.closing += api._shutdown
     webview.start()
 

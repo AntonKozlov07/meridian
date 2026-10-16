@@ -8,7 +8,9 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import webbrowser
 from dataclasses import asdict
+from urllib.parse import urlparse
 from collections.abc import Callable
 
 import requests
@@ -18,12 +20,18 @@ from meridian import config as config_mod
 from meridian.config import Config
 from meridian.core.poller import Poller
 from meridian.core.source import PlayerSource
+from meridian.enrich import lastfm
+from meridian.enrich.cache import Cache
+from meridian.enrich.manager import Enricher
+from meridian.enrich.scrobble import Event, ScrobbleTracker
 from meridian.core.state import CONNECTING, ERROR, LOGGED_OUT, SETUP_REQUIRED, WAITING, PlayerState
 from meridian.sources.spotify.auth import SpotifyAuth
 from meridian.sources.spotify.login import LoginError
 from meridian.sources.spotify.source import SpotifySource
 
 log = logging.getLogger(__name__)
+
+LINK_HOSTS = {"getsongbpm.com", "www.getsongbpm.com", "lrclib.net", "musicbrainz.org", "www.last.fm", "last.fm"}
 
 
 class Api:
@@ -36,13 +44,26 @@ class Api:
         self._last_track_id: str | None = None
         self._lock = threading.Lock()
         self._login_cancel: threading.Event | None = None
+        self._cache: Cache | None = None
+        self._enricher: Enricher | None = None
+        self._push_enrich: Callable[[dict], None] = lambda e: None
+        self._tracker = ScrobbleTracker()
+        self._current_track = None
+        self._lastfm_link: dict | None = None
+        self._lastfm_net = None
+        self._lastfm_cancel: threading.Event | None = None
 
-    def _attach(self, push: Callable[[dict], None]) -> None:
+    def _attach(self, push: Callable[[dict], None], push_enrich: Callable[[dict], None] | None = None) -> None:
         self._push = push
+        if push_enrich:
+            self._push_enrich = push_enrich
 
     def _shutdown(self) -> None:
         """Window closed: stop polling and stop pushing into a page that no longer exists."""
         self._push = lambda s: None
+        self._push_enrich = lambda e: None
+        if self._enricher:
+            self._enricher.shutdown()
         if self._poller:
             self._poller.stop()
 
@@ -113,8 +134,43 @@ class Api:
         self._source = SpotifySource(self._auth.client())
         if self._poller:
             self._poller.stop()
-        self._poller = Poller(self._source, lambda s: self._push(s.to_dict()), on_error=self._poll_failed)
+        if not self._enricher:
+            self._cache = Cache()
+            self._lastfm_link = lastfm.load_link()
+            self._enricher = Enricher(self._cfg, self._cache, lambda e: self._push_enrich(e),
+                                      lastfm_user=lambda: (self._lastfm_link or {}).get("username"))
+        self._poller = Poller(self._source, self._on_state, on_error=self._poll_failed)
         self._poller.start()
+
+    def _on_state(self, state: PlayerState) -> None:
+        """Every poll: update the page, then start enrichment and scrobbling. Neither may disturb playback."""
+        self._push(state.to_dict())
+        try:
+            if state.status == "ready" and state.track:
+                if self._current_track is None or state.track.id != self._current_track.id:
+                    self._current_track = state.track
+                    if self._enricher:
+                        self._enricher.request(state.track)
+                for ev in self._tracker.observe(state):
+                    threading.Thread(target=self._scrobble, args=(ev,), daemon=True).start()
+        except Exception:
+            log.exception("post-poll work failed")
+
+    def _scrobble(self, ev: Event) -> None:
+        if not self._lastfm_net:
+            if not (self._lastfm_link and self._cfg.lastfm_api_key and self._cfg.lastfm_api_secret):
+                return
+            self._lastfm_net = lastfm.make_network(self._cfg.lastfm_api_key, self._cfg.lastfm_api_secret,
+                                                   self._lastfm_link["username"], self._lastfm_link["session_key"])
+        t = ev.track
+        artist = t.artists[0] if t.artists else t.artist
+        try:
+            if ev.kind == "now_playing":
+                self._lastfm_net.update_now_playing(artist, t.title, album=t.album or None, duration=t.duration_ms // 1000)
+            else:
+                self._lastfm_net.scrobble(artist, t.title, ev.started_at, album=t.album or None, duration=t.duration_ms // 1000)
+        except Exception as e:
+            log.warning("Last.fm %s failed: %s", ev.kind, e)
 
     def _poll_failed(self, exc: Exception, failures: int) -> None:
         """Turns a failing poll into a screen that says why, instead of an endless spinner."""
@@ -180,7 +236,50 @@ class Api:
         return self._data(lambda s: asdict(s.library(force)))
 
     def search(self, query: str) -> dict:
-        return self._data(lambda s: asdict(s.search(query)))
+        def read(s):
+            data = asdict(s.search(query))
+            data["lyric_hits"] = self._cache.search_lyrics(query) if self._cache else []
+            return data
+        return self._data(read)
+
+    def play_at(self, uri: str, position_ms: int) -> dict:
+        return self._do(lambda s: s.play_at(uri, int(position_ms)))
+
+    def integrations(self) -> dict:
+        """What the About panel can offer: Last.fm stats need a key, linking needs the secret too."""
+        link = self._lastfm_link or lastfm.load_link()
+        return {"lastfm": {"configured": bool(self._cfg.lastfm_api_key),
+                           "can_link": bool(self._cfg.lastfm_api_key and self._cfg.lastfm_api_secret),
+                           "linked": bool(link), "username": (link or {}).get("username")}}
+
+    def link_lastfm(self) -> dict:
+        """Opens Last.fm's approval page and waits for the user to approve."""
+        if not (self._cfg.lastfm_api_key and self._cfg.lastfm_api_secret):
+            return self._fail("Add LASTFM_API_KEY and LASTFM_API_SECRET to .env to link Last.fm.")
+        self._lastfm_cancel = cancel = threading.Event()
+        try:
+            user, key = lastfm.link_account(self._cfg.lastfm_api_key, self._cfg.lastfm_api_secret, webbrowser.open, cancel)
+        except RuntimeError as e:
+            return self._fail(str(e))
+        lastfm.save_link(user, key)
+        self._lastfm_link, self._lastfm_net = {"username": user, "session_key": key}, None
+        if self._enricher and self._current_track:
+            self._enricher.request(self._current_track, ("lastfm",))
+        return {"ok": True, "error": None, "integrations": self.integrations()}
+
+    def unlink_lastfm(self) -> dict:
+        lastfm.clear_link()
+        self._lastfm_link = self._lastfm_net = None
+        if self._enricher and self._current_track:
+            self._enricher.request(self._current_track, ("lastfm",))
+        return {"ok": True, "error": None, "integrations": self.integrations()}
+
+    def open_link(self, url: str) -> dict:
+        """Opens an attribution link in the real browser (a link inside the window would navigate away from the app)."""
+        if urlparse(url).scheme == "https" and urlparse(url).hostname in LINK_HOSTS:
+            webbrowser.open(url)
+            return self._ok()
+        return self._fail("That link is not allowed.")
 
     def refresh(self) -> dict:
         if self._poller:

@@ -35,6 +35,9 @@ def main(argv: list[str]) -> int:
         results.append(check(True, f"redirect URI {cfg.spotify_redirect_uri} is valid", ""))
     except LoginError as e:
         results.append(check(False, "", str(e)))
+    ua = cfg.musicbrainz_user_agent
+    if "contact not set" in ua or "your-email" in ua:
+        print("  warn  MUSICBRAINZ_USER_AGENT has no real contact. MusicBrainz asks for one, e.g. Meridian/0.1 (you@example.com).")
     print(f"        Your Spotify app must list exactly: {cfg.spotify_redirect_uri}  (dashboard > your app > Settings > Redirect URIs > Save)")
 
     print("\nThis computer")

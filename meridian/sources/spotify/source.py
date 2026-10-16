@@ -45,6 +45,7 @@ def parse_track(item: dict) -> Track:
         isrc=(item.get("external_ids") or {}).get("isrc"),
         track_number=item.get("track_number"),
         album_tracks=album.get("total_tracks"),
+        artists=[x["name"] for x in item.get("artists", [])] or ([artist] if artist else []),
     )
 
 
@@ -289,6 +290,11 @@ class SpotifySource:
             self._sp.start_playback(uris=[uri])
         else:
             self._sp.start_playback(context_uri=uri)
+        self.invalidate_queue()
+
+    def play_at(self, uri: str, position_ms: int) -> None:
+        """Play a song starting part-way in, e.g. from a lyric-line search hit."""
+        self._sp.start_playback(uris=[uri], position_ms=max(0, int(position_ms)))
         self.invalidate_queue()
 
     # -- controls ------------------------------------------------------

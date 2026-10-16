@@ -37,3 +37,21 @@ Common causes:
 - **Command bar** (`Ctrl+K`, `Cmd+K` or `/`): searches Spotify for songs, playlists, albums and artists. Enter plays, Shift+Enter adds a song to the queue.
   Lyric-line search arrives with lyrics in step 6.
 - The library is cached for 5 minutes and refreshes when you open it.
+
+## Lyrics, credits and stats (step 6)
+
+Each source fills in on its own after a song starts, in the background, and is cached in `~/.meridian/cache.db`.
+A source that has nothing, or is down, only leaves its own chip or panel empty.
+
+| What | Source | Needs |
+| --- | --- | --- |
+| Synced lyrics, click a line to seek | LRCLIB | nothing |
+| Credits (performers, writers, producers, engineers) | MusicBrainz | nothing. Set `MUSICBRAINZ_USER_AGENT` with your email in `.env` |
+| BPM, key, energy | ReccoBeats, then GetSongBPM for gaps | GetSongBPM needs `GETSONGBPM_API_KEY` (it asks for a backlink, shown in About) |
+| Listeners, your plays, scrobbling | Last.fm | `LASTFM_API_KEY` and `LASTFM_API_SECRET`, then "Link Last.fm" in the About tab |
+| Ambient colour wash | the album art, extracted on your computer | nothing |
+
+Command bar: typing a line from a song's lyrics finds it, if that song's lyrics are already cached (you have played it before).
+Enter plays it from that line.
+
+Once Last.fm is linked, Meridian scrobbles what you play (Last.fm's rule: over 30s, and half the song or 4 minutes). Unlink in About to stop.

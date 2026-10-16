@@ -2,8 +2,7 @@
 pywebview>=5.0        # native window rendering the HTML/CSS UI
 spotipy>=2.24         # Spotify Web API + PKCE auth
 httpx>=0.27           # ReccoBeats, GetSongBPM, LRCLIB
-musicbrainzngs>=0.7.1 # credits
-pylast>=5.2           # Last.fm stats and scrobbling
+pylast>=5.2           # Last.fm linking and scrobbling
 Pillow>=10.0          # album art handling
 colorthief>=0.2.1     # ambient colour extraction
 keyring>=24.0         # store tokens in the OS keychain
