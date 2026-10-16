@@ -30,6 +30,32 @@ class Track:
 
 
 @dataclass
+class CatalogItem:
+    """A playlist, album, artist or the Liked Songs collection: anything that can be played as a context."""
+    kind: str  # playlist | album | artist | liked
+    id: str
+    uri: str
+    name: str
+    subtitle: str
+    art_url: str | None = None
+
+
+@dataclass
+class Library:
+    playlists: list[CatalogItem] = field(default_factory=list)  # Liked Songs first
+    albums: list[CatalogItem] = field(default_factory=list)
+    artists: list[CatalogItem] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)  # sections Spotify would not return
+
+
+@dataclass
+class SearchResults:
+    query: str = ""
+    songs: list[Track] = field(default_factory=list)
+    collections: list[CatalogItem] = field(default_factory=list)
+
+
+@dataclass
 class Device:
     id: str
     name: str

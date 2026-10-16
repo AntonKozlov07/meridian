@@ -173,8 +173,31 @@ function markLyric(jump){
   var pane=$('pane'),tgt=k>=0?ps[k]:ps[0];pane.scrollTo({top:Math.max(0,tgt.offsetTop-pane.clientHeight/2+20),behavior:jump?'auto':'smooth'});
 }
 function renderDev(){var d=DEV[st.dev];$('devb').innerHTML=d?I[d[0]]+esc(d[1]):I.devices+'No device';}
+var LIB=null,libState='idle',libErr='',libFilter='all';
+function imgOrArt(url,i){return url?'<img src="'+esc(url)+'" alt="" loading="lazy">':art(i);}
+function loadLib(force){
+  var a=apiObj();if(!a)return;
+  if(!LIB)libState='loading';
+  a.get_library(!!force).then(function(r){
+    if(r.ok===false){libErr=r.error;if(!LIB)libState='error';}else{LIB=r.data;libState='ready';}
+    if(st.view==='library')renderLibLive();
+  }).catch(function(){libErr='Lost contact with Meridian.';if(!LIB)libState='error';if(st.view==='library')renderLibLive();});
+}
+function renderLibLive(){
+  var chips=[['all','All'],['playlists','Playlists'],['albums','Albums'],['artists','Artists']].map(function(f){return '<button class="chip'+(libFilter===f[0]?' sel':'')+'" data-f="'+f[0]+'">'+f[1]+'</button>';}).join('');
+  var h='<div class="lh"><h2>Library</h2><div class="flt" id="flt">'+chips+'</div></div>';
+  if(!LIB&&libState==='error')h+='<div class="empty"><div class="ic">'+I.search+'</div><h4>Could not load your library</h4><p>'+esc(libErr)+'</p><p style="margin-top:12px"><button class="btn" data-retry="1">Try again</button></p></div>';
+  else if(!LIB)h+='<div class="empty"><div class="ic">'+I.search+'</div><h4>Loading your library</h4><p>Fetching playlists, albums and artists from Spotify.</p></div>';
+  else{
+    var items=libFilter==='playlists'?LIB.playlists:libFilter==='albums'?LIB.albums:libFilter==='artists'?LIB.artists:LIB.playlists.concat(LIB.albums,LIB.artists);
+    if(LIB.failed&&LIB.failed.length)h+='<p class="sub" style="margin:0 0 14px">Spotify would not return: '+esc(LIB.failed.join(', '))+'.</p>';
+    if(!items.length)h+='<div class="empty"><div class="ic">'+I.search+'</div><h4>Nothing here yet</h4><p>Save playlists, albums or artists in Spotify and they will appear here.</p></div>';
+    else h+='<div class="grid">'+items.map(function(c,i){return '<div class="card'+(c.name===st.ctx?' on':'')+'" data-uri="'+esc(c.uri)+'" data-kind="'+esc(c.kind)+'" title="'+esc(c.name)+'"><div class="art">'+imgOrArt(c.art_url,i)+'</div><div class="n">'+esc(c.name)+'</div><div class="m">'+esc(c.subtitle)+'</div></div>';}).join('')+'</div>';
+  }
+  var keep=$('library').scrollTop;$('library').innerHTML=h;$('library').scrollTop=keep;
+}
 function renderLib(){
-  if(LIVE){$('library').innerHTML='<div class="lh"><h2>Library</h2></div><div class="empty"><div class="ic">'+I.search+'</div><h4>Your library arrives in the next step</h4><p>Playlists and saved albums will load from Spotify here.</p></div>';return;}
+  if(LIVE){renderLibLive();loadLib(false);return;}
   $('library').innerHTML='<div class="lh"><h2>Library</h2><div class="flt" id="flt"><button class="chip sel">All</button><button class="chip">Playlists</button><button class="chip">Albums</button><button class="chip">Artists</button></div></div><div class="grid">'+
     PLS.concat([["Concrete Orchard","Album · Ines Varga",1],["Two Rooms","Album · Okoro & Wren",3],["Rest Stops","Album · Dalton Reyes",5]]).map(function(p,i){return '<div class="card'+(p[0]===st.ctx?' on':'')+'" data-c="'+p[0]+'"><div class="art">'+art(p[2]+i)+'</div><div class="n">'+p[0]+'</div><div class="m">'+p[1]+'</div></div>';}).join('')+'</div>';
 }
@@ -196,15 +219,44 @@ function jumpTo(k){var b=seq[k];if(!b||b.k==='cur'||T[b.i].off)return;
 var pi=0,pres=[];
 function openPal(){$('pal').classList.add('open');$('q').value='';filt();setTimeout(function(){$('q').focus();},0);}
 function closePal(){$('pal').classList.remove('open');}
-function filt(){var q=$('q').value.toLowerCase().trim();pres=[];
+var searchSeq=0,searchT=0,sstate='idle',serr='';
+function liveSearch(){
+  var q=$('q').value.trim();clearTimeout(searchT);++searchSeq;
+  if(!q){pres=[];pi=0;sstate='idle';drawPal();return;}
+  sstate='loading';var my=searchSeq;
+  if(!pres.length)drawPal();  /* keep the old results on screen while typing, so the list does not flash */
+  searchT=setTimeout(function(){var a=apiObj();if(!a)return;
+    a.search(q).then(function(r){
+      if(my!==searchSeq)return;  /* a newer keystroke superseded this answer */
+      if(r.ok===false){sstate='error';serr=r.error;pres=[];}
+      else{sstate='ready';pres=r.data.songs.map(function(t){return {type:'song',x:mapTrack(t)};}).concat(r.data.collections.map(function(c){return {type:'pl',item:c};}));}
+      pi=0;drawPal();
+    }).catch(function(){if(my===searchSeq){sstate='error';serr='Lost contact with Meridian.';pres=[];pi=0;drawPal();}});
+  },250);
+}
+function palEmpty(){
+  if(LIVE){
+    if(sstate==='idle')return '<div class="empty" style="padding:24px 10px"><h4>Search Spotify</h4><p>Type a song, artist, album or playlist.</p></div>';
+    if(sstate==='loading')return '<div class="empty" style="padding:24px 10px"><h4>Searching</h4><p>Asking Spotify.</p></div>';
+    if(sstate==='error')return '<div class="empty" style="padding:24px 10px"><h4>Search failed</h4><p>'+esc(serr)+'</p></div>';
+  }
+  return '<div class="empty" style="padding:24px 10px"><h4>Nothing matches</h4><p>Try an artist, a song or a line from the lyrics.</p></div>';
+}
+function filt(){if(LIVE){liveSearch();return;}var q=$('q').value.toLowerCase().trim();pres=[];
   T.forEach(function(x,i){if(x.off)return;var hit=!q||x.t.toLowerCase().indexOf(q)>-1||x.a.toLowerCase().indexOf(q)>-1;var ly=null;if(!hit&&q.length>2&&x.ly)x.ly.forEach(function(l){if(!ly&&l[1].toLowerCase().indexOf(q)>-1)ly=l;});if(hit||ly)pres.push({type:'song',i:i,ly:ly});});
   PLS.forEach(function(p,i){if(!q||p[0].toLowerCase().indexOf(q)>-1)pres.push({type:'pl',p:p,i:i});});
   pres=pres.slice(0,8);pi=0;drawPal();}
-function drawPal(){var h='',lastT='';pres.forEach(function(r,k){var g=r.type==='song'?'Songs':'Playlists and albums';if(g!==lastT){h+='<div class="gh">'+g+'</div>';lastT=g;}
-  if(r.type==='song'){var x=T[r.i];h+='<div class="r'+(k===pi?' sel':'')+'" data-k="'+k+'"><div class="art">'+artT(r.i)+'</div><div><div class="n">'+esc(x.t)+'</div><div class="m">'+(r.ly?'“'+esc(r.ly[1])+'” at '+fmt(r.ly[0]):esc(x.a)+' · '+fmt(x.d))+'</div></div><kbd>↵</kbd></div>';}
+function drawPal(){var h='',lastT='';pres.forEach(function(r,k){var g=r.type==='song'?'Songs':LIVE?'Playlists, albums and artists':'Playlists and albums';if(g!==lastT){h+='<div class="gh">'+g+'</div>';lastT=g;}
+  if(r.type==='song'){var x=r.x||T[r.i];h+='<div class="r'+(k===pi?' sel':'')+'" data-k="'+k+'"><div class="art">'+(r.x?imgOrArt(x.img,k):artT(r.i))+'</div><div><div class="n">'+esc(x.t)+'</div><div class="m">'+(r.ly?'“'+esc(r.ly[1])+'” at '+fmt(r.ly[0]):esc(x.a)+' · '+fmt(x.d))+'</div></div><kbd>↵</kbd></div>';}
+  else if(r.item)h+='<div class="r'+(k===pi?' sel':'')+'" data-k="'+k+'"><div class="art">'+imgOrArt(r.item.art_url,k)+'</div><div><div class="n">'+esc(r.item.name)+'</div><div class="m">'+esc(r.item.subtitle)+'</div></div><kbd>↵</kbd></div>';
   else h+='<div class="r'+(k===pi?' sel':'')+'" data-k="'+k+'"><div class="art">'+art(r.p[2]+r.i)+'</div><div><div class="n">'+r.p[0]+'</div><div class="m">'+r.p[1]+'</div></div><kbd>↵</kbd></div>';});
-  $('res').innerHTML=h||'<div class="empty" style="padding:24px 10px"><h4>Nothing matches</h4><p>Try an artist, a song or a line from the lyrics.</p></div>';}
+  $('res').innerHTML=h||palEmpty();}
 function pick(k,queue){var r=pres[k];if(!r)return;closePal();
+  if(LIVE){
+    if(r.type==='pl'){call('play_uri',r.item.uri,r.item.kind);setView('listen');return;}
+    if(queue){var q=call('add_to_queue',r.x.uri);if(q)q.then(function(res){if(res&&res.ok)toast('Added to queue.');});return;}
+    call('play_uri',r.x.uri,'track');setView('listen');return;
+  }
   if(r.type==='pl'){st.ctx=r.p[0];renderTrans();setView('listen');return;}
   if(queue){userQ.push(r.i);var j=ctxQ.indexOf(r.i);if(j>-1)ctxQ.splice(j,1);renderStrip();return;}
   setView('listen');var j2=ctxQ.indexOf(r.i);if(j2>-1)ctxQ.splice(j2,1);j2=userQ.indexOf(r.i);if(j2>-1)userQ.splice(j2,1);hist.push(st.cur);if(hist.length>3)ctxQ.push(hist.shift());play(r.i);if(r.ly){st.t=r.ly[0];renderTime();posStrip();}}
@@ -300,9 +352,10 @@ $('like').onclick=function(){st.liked[st.cur]=!st.liked[st.cur];renderLike();if(
 $('mute').onclick=function(){st.muted=!st.muted;renderVol();if(LIVE)volLive();};
 $('tabs').onclick=function(e){var b=e.target.closest('button');if(b){st.tab=b.dataset.t;renderPane();}};
 $('views').onclick=function(e){var b=e.target.closest('button');if(b)setView(b.dataset.v);};
-$('library').onclick=function(e){var f=e.target.closest('.chip');if(f){$('flt').querySelectorAll('.chip').forEach(function(c){c.classList.toggle('sel',c===f);});return;}var c=e.target.closest('.card');if(c){st.ctx=c.dataset.c;renderTrans();setView('listen');}};
+$('library').onclick=function(e){if(LIVE){var rt=e.target.closest('[data-retry]');if(rt){libState='loading';renderLibLive();loadLib(true);return;}var lf=e.target.closest('.chip');if(lf){libFilter=lf.dataset.f;renderLibLive();return;}var lc=e.target.closest('.card');if(lc){call('play_uri',lc.dataset.uri,lc.dataset.kind);setView('listen');}return;}
+  var f=e.target.closest('.chip');if(f){$('flt').querySelectorAll('.chip').forEach(function(c){c.classList.toggle('sel',c===f);});return;}var c=e.target.closest('.card');if(c){st.ctx=c.dataset.c;renderTrans();setView('listen');}};
 $('pane').onclick=function(e){var p=e.target.closest('#lyr p');if(p){st.t=+p.dataset.s;renderTime();posStrip();if(LIVE)seekLive();}};
-$('cmdb').onclick=function(){if(LIVE){toast('Search arrives with the Library step.');return;}openPal();};
+$('cmdb').onclick=openPal;
 $('pal').onmousedown=function(e){if(e.target.id==='pal')closePal();};
 $('q').oninput=filt;
 $('res').onclick=function(e){var r=e.target.closest('.r');if(r)pick(+r.dataset.k,e.shiftKey);};

@@ -30,3 +30,10 @@ Common causes:
 - **Redirect URI** must be listed exactly as `http://127.0.0.1:8888/callback` in the Spotify dashboard (Settings > Redirect URIs > Save). `localhost` is rejected.
 - **Development mode:** until you request extended access, only accounts added under *User Management* in the dashboard can use your app. Add your Spotify email there.
 - **Port 8888 busy:** close the other program, or change the port in `SPOTIFY_REDIRECT_URI` and in the dashboard.
+
+## Library and search (step 5)
+
+- **Library:** Liked Songs, your playlists, saved albums and followed artists, with All / Playlists / Albums / Artists filters. Click a card to play it.
+- **Command bar** (`Ctrl+K`, `Cmd+K` or `/`): searches Spotify for songs, playlists, albums and artists. Enter plays, Shift+Enter adds a song to the queue.
+  Lyric-line search arrives with lyrics in step 6.
+- The library is cached for 5 minutes and refreshes when you open it.

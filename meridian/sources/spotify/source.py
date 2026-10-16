@@ -6,11 +6,14 @@ from collections import Counter
 
 import spotipy
 
-from meridian.core.state import NO_DEVICE, READY, Device, PlayerState, Track
+from meridian.core.state import NO_DEVICE, READY, CatalogItem, Device, Library, PlayerState, SearchResults, Track
 from meridian.core.timeline import build_timeline
 
 PAST_COUNT = 4  # past blocks shown left of the now line
 QUEUE_REFRESH_S = 30  # the queue is re-read this often, and on every track change
+LIBRARY_TTL_S = 300
+LIBRARY_CAP = 200  # per section
+SEARCH_LIMIT = 5  # per type
 MAX_SKIPS = 8  # beyond this, jump with start_playback instead of repeated next
 
 REPEAT_MODES = ("off", "context", "track")
@@ -45,6 +48,32 @@ def parse_track(item: dict) -> Track:
     )
 
 
+def _art(images: list | None) -> str | None:
+    return images[0]["url"] if images else None
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n:,} {word}" + ("" if n == 1 else "s")
+
+
+def parse_playlist(p: dict) -> CatalogItem:
+    tracks = p.get("tracks") or p.get("items") or {}
+    n = tracks.get("total") if isinstance(tracks, dict) else None
+    owner = (p.get("owner") or {}).get("display_name")
+    sub = "Playlist" + (f" · {_plural(n, 'song')}" if n is not None else (f" · {owner}" if owner else ""))
+    return CatalogItem("playlist", p["id"], p["uri"], p.get("name", ""), sub, _art(p.get("images")))
+
+
+def parse_album(a: dict) -> CatalogItem:
+    who = ", ".join(x["name"] for x in a.get("artists", []))
+    return CatalogItem("album", a["id"], a["uri"], a.get("name", ""), "Album" + (f" · {who}" if who else ""),
+                       _art(a.get("images")))
+
+
+def parse_artist(a: dict) -> CatalogItem:
+    return CatalogItem("artist", a["id"], a["uri"], a.get("name", ""), "Artist", _art(a.get("images")))
+
+
 def parse_device(d: dict) -> Device:
     vol = d.get("volume_percent")
     return Device(
@@ -69,6 +98,9 @@ class SpotifySource:
         self._past_stale = False
         self._mine: Counter[str] = Counter()  # uris queued from Meridian, not yet played
         self._context_uri: str | None = None
+        self._library: Library | None = None
+        self._library_at = 0.0
+        self._user_id: str | None = None
 
     # -- state ---------------------------------------------------------
     def poll(self) -> PlayerState:
@@ -181,6 +213,83 @@ class SpotifySource:
             except spotipy.SpotifyException:
                 return False
         return self._liked[track.id]
+
+    # -- library and search --------------------------------------------
+    def library(self, force: bool = False) -> Library:
+        """Playlists, saved albums, followed artists. Cached for a few minutes; a failing section is reported, not fatal."""
+        if self._library and not force and time.monotonic() - self._library_at < LIBRARY_TTL_S:
+            return self._library
+        lib = Library()
+        sp = self._sp
+        try:
+            uid = self._user()
+            total = sp.current_user_saved_tracks(limit=1).get("total", 0)
+            lib.playlists.append(CatalogItem("liked", "liked", f"spotify:user:{uid}:collection", "Liked Songs",
+                                             f"Playlist · {_plural(total, 'song')}", None))
+        except spotipy.SpotifyException:
+            lib.failed.append("liked songs")
+        lib.playlists += self._section("playlists", lib, lambda off: sp.current_user_playlists(limit=50, offset=off),
+                                       lambda r: r, parse_playlist)
+        lib.albums = self._section("albums", lib, lambda off: sp.current_user_saved_albums(limit=50, offset=off),
+                                   lambda r: r, lambda it: parse_album(it["album"]))
+        lib.artists = self._artists(lib)
+        self._library, self._library_at = lib, time.monotonic()
+        return lib
+
+    @staticmethod
+    def _section(name, lib, fetch, unwrap, parse) -> list[CatalogItem]:
+        out: list[CatalogItem] = []
+        try:
+            while len(out) < LIBRARY_CAP:
+                page = unwrap(fetch(len(out)))
+                items = [i for i in page.get("items", []) if i]  # Spotify returns null for deleted entries
+                if not items:
+                    break
+                out += [parse(i) for i in items]
+                if not page.get("next"):
+                    break
+        except spotipy.SpotifyException:
+            lib.failed.append(name)
+        return out
+
+    def _artists(self, lib: Library) -> list[CatalogItem]:
+        out, after = [], None
+        try:
+            while len(out) < LIBRARY_CAP:
+                page = self._sp.current_user_followed_artists(limit=50, after=after).get("artists", {})
+                items = [i for i in page.get("items", []) if i]
+                out += [parse_artist(i) for i in items]
+                after = (page.get("cursors") or {}).get("after")
+                if not items or not after:
+                    break
+        except spotipy.SpotifyException:
+            lib.failed.append("artists")
+        return out
+
+    def _user(self) -> str:
+        if not self._user_id:
+            self._user_id = self._sp.current_user()["id"]
+        return self._user_id
+
+    def search(self, query: str) -> SearchResults:
+        q = (query or "").strip()
+        if not q:
+            return SearchResults()
+        r = self._sp.search(q=q, type="track,playlist,album,artist", limit=SEARCH_LIMIT, market="from_token")
+        songs = [parse_track(t) for t in (r.get("tracks") or {}).get("items", []) if t]
+        songs = [t for t in songs if t.is_playable]
+        cols = [parse_playlist(p) for p in (r.get("playlists") or {}).get("items", []) if p]
+        cols += [parse_album(a) for a in (r.get("albums") or {}).get("items", []) if a]
+        cols += [parse_artist(a) for a in (r.get("artists") or {}).get("items", []) if a]
+        return SearchResults(query=q, songs=songs, collections=cols)
+
+    def play_uri(self, uri: str, kind: str) -> None:
+        """Play a song on its own, or an album, playlist, artist or Liked Songs from the top."""
+        if kind in ("track", "episode"):
+            self._sp.start_playback(uris=[uri])
+        else:
+            self._sp.start_playback(context_uri=uri)
+        self.invalidate_queue()
 
     # -- controls ------------------------------------------------------
     def play(self) -> None:

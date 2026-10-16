@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+from dataclasses import asdict
 from collections.abc import Callable
 
 import requests
@@ -172,6 +173,15 @@ class Api:
     def jump_ahead(self, steps: int, uri: str) -> dict:
         return self._do(lambda s: s.jump_ahead(int(steps), uri))
 
+    def play_uri(self, uri: str, kind: str) -> dict:
+        return self._do(lambda s: s.play_uri(uri, kind))
+
+    def get_library(self, force: bool = False) -> dict:
+        return self._data(lambda s: asdict(s.library(force)))
+
+    def search(self, query: str) -> dict:
+        return self._data(lambda s: asdict(s.search(query)))
+
     def refresh(self) -> dict:
         if self._poller:
             self._poller.poke()
@@ -191,6 +201,18 @@ class Api:
         if self._poller:
             self._poller.poke(delay=0.4)
         return self._ok()
+
+    def _data(self, read: Callable[[PlayerSource], dict]) -> dict:
+        """Like _do, but returns what was read: {ok, error, data}."""
+        if not self._source:
+            return self._fail("Not connected to Spotify.")
+        try:
+            return {"ok": True, "error": None, "data": read(self._source)}
+        except SpotifyException as e:
+            return self._fail(friendly_error(e))
+        except Exception as e:
+            log.warning("read failed: %s", e)
+            return self._fail("Something went wrong talking to Spotify.")
 
     @staticmethod
     def _ok() -> dict:
