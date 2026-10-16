@@ -94,6 +94,7 @@ app.innerHTML=
 var $=function(id){return document.getElementById(id);};
 
 function buildSeq(){
+  if(LIVE){seq=liveSeq;return;}
   seq=[];var s=0;
   hist.forEach(function(i){seq.push({i:i,s:s,k:'past'});s+=T[i].d;});
   seq.push({i:st.cur,s:s,k:'cur'});s+=T[st.cur].d;
@@ -101,6 +102,7 @@ function buildSeq(){
   ctxQ.forEach(function(i){seq.push({i:i,s:s,k:'next'});s+=T[i].d;});
 }
 function curS(){for(var k=0;k<seq.length;k++)if(seq[k].k==='cur')return seq[k].s;return 0;}
+function nUpCount(){return seq.filter(function(b){return b.k!=='past'&&b.k!=='cur';}).length;}
 function renderStrip(){
   buildSeq();clock0=nowMs()-(curS()+st.t)*1000;
   var h='';
@@ -108,12 +110,14 @@ function renderStrip(){
     var sub=b.k==='past'?esc(x.a):b.k==='cur'?esc(x.a):esc(x.a)+' · <span class="mono">'+clk(clock0+b.s*1000)+'</span>';
     h+='<div class="blk '+b.k+(x.off?' off':'')+'" data-k="'+k+'" style="left:'+(b.s*PPS)+'px;width:'+w+'px">'+(b.k==='cur'?'<span class="pf" id="pf"></span><span class="pl" id="pl"></span>':'')+'<div class="art">'+artT(b.i)+'</div><div class="t"><div class="n">'+esc(x.t)+'</div><div class="a">'+(x.off?'Unavailable, will be skipped':sub)+'</div></div></div>';});
   var end=seq.length?seq[seq.length-1].s+T[seq[seq.length-1].i].d:0;
+  if(LIVE&&seq.length&&!nUpCount())h+='<div class="qempty" style="left:'+(end*PPS+16)+'px">Queue is empty</div>';
   h+='<div class="ruler">';
   var first=Math.ceil(clock0/30000)*30000;
   for(var ms=first;ms<clock0+end*1000;ms+=30000){var x=(ms-clock0)/1000*PPS,maj=(Math.round(ms/30000)%4===0);h+='<span class="tick'+(maj?' maj':'')+'" style="left:'+x+'px"></span>'+(maj?'<span class="tlab" style="left:'+x+'px">'+clk(ms)+'</span>':'');}
   h+='</div>';
   $('strip').innerHTML=h;
-  $('upn').innerHTML=seq.filter(function(b){return b.k!=='past'&&b.k!=='cur';}).length+' up next · queue runs to '+clk(clock0+end*1000);
+  var nUp=seq.filter(function(b){return b.k!=='past'&&b.k!=='cur';}).length;
+  $('upn').innerHTML=nUp?nUp+' up next · queue runs to '+clk(clock0+end*1000):'Queue is empty';
   posStrip();
 }
 function posStrip(){
@@ -180,6 +184,7 @@ function play(i){if(T[i].off)return;st.cur=i;st.t=0;renderNow();}
 function advance(){if(st.repeat===2){st.t=0;renderTime();posStrip();return;}hist.push(st.cur);if(hist.length>3)ctxQ.push(hist.shift());var i=userQ.length?userQ.shift():ctxQ.shift();while(T[i].off){ctxQ.push(i);i=ctxQ.shift();}play(i);}
 function back(){if(st.t>3||!hist.length){st.t=0;renderTime();posStrip();return;}ctxQ.unshift(st.cur);play(hist.pop());}
 function jumpTo(k){var b=seq[k];if(!b||b.k==='cur'||T[b.i].off)return;
+  if(LIVE){var ci=seq.findIndex(function(x){return x.k==='cur';});if(b.k==='past')call('play_track',T[b.i].uri);else call('jump_ahead',k-ci,T[b.i].uri);return;}
   if(b.k==='past'){var j=hist.indexOf(b.i);var after=hist.splice(j);after.shift();ctxQ=after.concat([st.cur]).concat(ctxQ);play(b.i);return;}
   hist.push(st.cur);if(hist.length>3)ctxQ.push(hist.shift());
   var ups=seq.filter(function(x){return x.k==='mine'||x.k==='next';}),pos=ups.indexOf(b);
@@ -207,7 +212,7 @@ function pick(k,queue){var r=pres[k];if(!r)return;closePal();
 
 
 /* ---------- Live mode: state pushed from Python (window.meridian.update) ---------- */
-var REP=['off','context','track'],lastSeek=0,lastVol=0,lastEnd=0,seekT=0,volT=0,curId=null,toastT=0;
+var liveSeq=[],ENR={},REP=['off','context','track'],lastSeek=0,lastVol=0,lastEnd=0,seekT=0,volT=0,curId=null,toastT=0;
 app.insertAdjacentHTML('beforeend','<div class="gate" id="gate" hidden></div><div class="toast" id="toast"></div>');
 function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(function(){t.classList.remove('show');},4000);}
 function apiObj(){return window.pywebview&&window.pywebview.api&&window.pywebview.api.boot?window.pywebview.api:null;}
@@ -248,21 +253,28 @@ function bootLive(){
   function run(){window.pywebview.api.boot().then(window.meridian.update);}
   if(apiObj())run();else window.addEventListener('pywebviewready',run);
 }
+function mapTrack(tr){
+  var x={id:tr.id,uri:tr.uri,t:tr.title,a:tr.artist,al:tr.album,y:tr.year,d:Math.max(1,tr.duration_ms/1000),img:tr.art_url,tn:tr.track_number&&tr.album_tracks?tr.track_number+' of '+tr.album_tracks:null,pal:hashPal(tr.id)};
+  var e=ENR[tr.id];if(e)for(var k in e)x[k]=e[k];return x;
+}
 window.meridian={update:function(s){
   if(s.status!=='ready'){
     if(s.status==='no_device'){DEV.length=0;fillDev(s.devices);renderDev();}
     showGate(s.status,s);curId=null;st.playing=false;return;
   }
   showGate(null);
-  var tr=s.track,changed=tr.id!==curId,old=T[0]||{};
-  var x={id:tr.id,t:tr.title,a:tr.artist,al:tr.album,y:tr.year,d:Math.max(1,tr.duration_ms/1000),img:tr.art_url,tn:tr.track_number&&tr.album_tracks?tr.track_number+' of '+tr.album_tracks:null,pal:hashPal(tr.id)};
-  if(!changed){['bpm','key','en','pc','ly','cr'].forEach(function(k){if(old[k]!=null)x[k]=old[k];});}
-  T[0]=x;st.cur=0;
-  st.playing=s.is_playing;st.shuffle=s.shuffle;st.repeat=Math.max(0,REP.indexOf(s.repeat));st.ctx=s.context_name;st.liked[0]=s.liked;
+  var tr=s.track,changed=tr.id!==curId;
+  st.playing=s.is_playing;st.shuffle=s.shuffle;st.repeat=Math.max(0,REP.indexOf(s.repeat));st.ctx=s.context_name;
   if(s.volume!=null&&Date.now()-lastVol>1500){if(s.volume>0){st.vol=s.volume;st.muted=false;}else if(!st.muted)st.vol=0;}
   DEV.length=0;fillDev(s.devices);st.dev=Math.max(0,s.devices.findIndex(function(d){return d.is_active;}));
-  if(dragX===null&&Date.now()-lastSeek>1500){var lag=s.is_playing?Math.min(5000,Math.max(0,Date.now()-s.fetched_at_ms)):0;st.t=Math.min(x.d,(s.progress_ms+lag)/1000);}
   renderTrans();renderVol();renderDev();
+  if(dragX!==null)return; /* never rebuild the strip under the user's finger */
+  /* Timeline: Python decides order, kinds and offsets; offsets are shifted so the first block starts at 0 */
+  var blocks=(s.timeline&&s.timeline.blocks)||[{kind:'cur',track:tr,start_ms:0}];
+  var first=blocks[0].start_ms;T.length=0;liveSeq=[];
+  blocks.forEach(function(b,k){T.push(mapTrack(b.track));liveSeq.push({i:k,s:(b.start_ms-first)/1000,k:b.kind});if(b.kind==='cur')st.cur=k;});
+  st.liked={};st.liked[st.cur]=s.liked;
+  if(Date.now()-lastSeek>1500){var lag=s.is_playing?Math.min(5000,Math.max(0,Date.now()-s.fetched_at_ms)):0;st.t=Math.min(T[st.cur].d,(s.progress_ms+lag)/1000);}
   if(changed){curId=tr.id;renderNow();}else{renderLike();renderStrip();renderTime();}
 }};
 function fillDev(ds){(ds||[]).forEach(function(d){DEV.push([devIcon(d.type),d.name,d.is_restricted?'Not controllable':d.is_active?'Spotify Connect · Active':'Spotify Connect',d.is_restricted?1:0,d.id]);});}

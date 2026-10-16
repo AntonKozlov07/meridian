@@ -103,6 +103,15 @@ class Api:
     def set_saved(self, track_id: str, saved: bool) -> dict:
         return self._do(lambda s: s.set_saved(track_id, saved))
 
+    def add_to_queue(self, uri: str) -> dict:
+        return self._do(lambda s: s.add_to_queue(uri))
+
+    def play_track(self, uri: str) -> dict:
+        return self._do(lambda s: s.play_track(uri))
+
+    def jump_ahead(self, steps: int, uri: str) -> dict:
+        return self._do(lambda s: s.jump_ahead(int(steps), uri))
+
     def refresh(self) -> dict:
         if self._poller:
             self._poller.poke()

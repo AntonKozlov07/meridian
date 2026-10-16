@@ -50,7 +50,11 @@ class PlayerState:
     context_name: str | None = None
     liked: bool = False
     devices: list[Device] = field(default_factory=list)
+    timeline: "Timeline | None" = None
     message: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+from meridian.core.timeline import Timeline  # noqa: E402  (after Track, which timeline imports)

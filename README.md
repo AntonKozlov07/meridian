@@ -11,3 +11,11 @@ Desktop music player on top of Spotify. See the handoff docs for the design and 
 5. `python -m meridian.main`, then press "Connect Spotify".
 
 Tokens are stored in the OS keychain. Tests: `python -m pytest`.
+
+## Timeline (step 4)
+
+The strip shows up to 4 recently played songs, the current song and the queue, laid out on the wall clock by `meridian/core/timeline.py`.
+Click an upcoming block to skip forward to it (queued songs keep their place), or a past block to replay it.
+
+Spotify's API does not say which queue items you added. Songs queued from inside Meridian get the "Queued" tag; songs
+queued from other Spotify apps appear as normal upcoming songs.

@@ -10,3 +10,4 @@
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
 .ttl{overflow-wrap:anywhere}
+.qempty{position:absolute;top:22px;height:68px;display:flex;align-items:center;padding:0 16px;border-radius:var(--radius-2);border:1px dashed var(--fill-track);color:var(--ink-muted);font-size:13px;white-space:nowrap}
