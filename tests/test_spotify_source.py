@@ -196,3 +196,39 @@ def test_no_device_to_wake_raises_a_clear_error():
     sp.start_playback.side_effect = spotipy.SpotifyException(404, -1, "x", reason="NO_ACTIVE_DEVICE")
     with pytest.raises(spotipy.SpotifyException):
         src.play_uri("spotify:track:s1", "track")
+
+
+def _playing(uri, name="Phone"):
+    return {"is_playing": True, "progress_ms": 0, "item": {**TRACK, "uri": uri}, "device": {"id": "d1", "name": name, "type": "Smartphone", "is_active": True}}
+
+
+def test_verified_play_makes_no_second_attempt(monkeypatch):
+    monkeypatch.setattr("meridian.sources.spotify.source.VERIFY_PLAYBACK", True)
+    sp, src = make(); src.poll()
+    sp.current_playback.return_value = _playing("spotify:track:s1")
+    src.play_uri("spotify:track:s1", "track")
+    assert sp.start_playback.call_count == 1
+
+
+def test_play_that_did_not_take_is_retried_once(monkeypatch):
+    """Spotify accepted the command but nothing is playing (the phone dropped it). Retry on the same device, once."""
+    monkeypatch.setattr("meridian.sources.spotify.source.VERIFY_PLAYBACK", True)
+    sp, src = make(); src.poll()
+    sp.current_playback.return_value = {"is_playing": False, "item": TRACK, "device": {"id": "d1", "name": "Phone"}}
+    src.play_uri("spotify:track:s1", "track")
+    assert sp.start_playback.call_count == 2
+    assert all(c.kwargs["device_id"] == "d1" for c in sp.start_playback.call_args_list)
+
+
+def test_wrong_song_playing_is_retried(monkeypatch):
+    monkeypatch.setattr("meridian.sources.spotify.source.VERIFY_PLAYBACK", True)
+    sp, src = make(); src.poll()
+    sp.current_playback.return_value = _playing("spotify:track:something-else")
+    src.play_uri("spotify:track:s1", "track")
+    assert sp.start_playback.call_count == 2
+
+
+def test_unknown_spotify_errors_say_what_spotify_said():
+    from meridian.api import friendly_error
+    msg = friendly_error(spotipy.SpotifyException(403, -1, "Restriction violated", reason="UNKNOWN"))
+    assert "403" in msg and "UNKNOWN" in msg

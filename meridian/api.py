@@ -301,6 +301,7 @@ class Api:
         try:
             action(self._source)
         except SpotifyException as e:
+            log.warning("action failed: HTTP %s %s %s", e.http_status, getattr(e, "reason", ""), e.msg)
             return self._fail(friendly_error(e))
         except Exception as e:
             log.warning("action failed: %s", e)
@@ -338,6 +339,7 @@ def friendly_error(e: SpotifyException) -> str:
         return "No active Spotify device. Start playing on one, then try again."
     if e.http_status == 429:
         return "Spotify is rate limiting requests. Try again in a moment."
+    detail = f"HTTP {e.http_status}" + (f", {e.reason}" if getattr(e, "reason", "") else "")
     if e.http_status == 403:
-        return "Spotify refused that action on this device."
-    return "Spotify could not do that."
+        return f"Spotify refused that action on this device ({detail}). A phone that is not fully awake can do this."
+    return f"Spotify could not do that ({detail})."
