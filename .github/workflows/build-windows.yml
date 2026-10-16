@@ -20,6 +20,8 @@ jobs:
         run: python -m pytest -q
       - name: Build
         run: python -m PyInstaller packaging/meridian.spec --noconfirm
+      - name: Add the launcher that clears the downloaded-file mark
+        run: Copy-Item packaging\Start-Meridian.bat dist\Meridian\
       - name: Self-check the built app
         run: .\dist\Meridian\Meridian.exe --selfcheck
       - name: Zip

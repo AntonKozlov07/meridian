@@ -23,6 +23,13 @@ def selfcheck() -> int:
             importlib.import_module(mod)
         except Exception as e:  # ImportError, or a GUI library failing to load
             problems.append(f"cannot import {mod}: {type(e).__name__}: {e}")
+    if sys.platform == "win32":
+        # webview.start() loads this backend (through pythonnet) only when the window opens, so importing the
+        # module alone proves nothing. This is the import that failed on a real PC and a plain import check missed.
+        try:
+            importlib.import_module("webview.platforms.winforms")
+        except Exception as e:
+            problems.append(f"cannot load the Windows window backend: {type(e).__name__}: {e}")
     print(f"Meridian {__version__}  ui={config.UI_DIR}  frozen={config.FROZEN}")
     print("OK" if not problems else "PROBLEMS:\n  " + "\n  ".join(problems))
     return 1 if problems else 0

@@ -81,3 +81,9 @@ Two ways, both produce `Meridian\Meridian.exe` (a folder; no Python needed to ru
 The packaged app keeps its settings in `C:\Users\<you>\.meridian\`: `.env` (or paste your client ID on the first-run screen), the cache, the log and your saved theme.
 It needs Microsoft Edge WebView2, which Windows 10 and 11 include.
 `Meridian.exe --selfcheck` confirms the bundled files and libraries without opening a window; the build runs it for you.
+
+### If the downloaded app will not start
+
+Windows marks files from a downloaded zip as "from the internet" and can then refuse to load Meridian's libraries
+(the error mentions `pythonnet` or `Python.Runtime.dll`). Either start it with **Start-Meridian.bat** in the Meridian folder,
+or unblock before extracting: right-click the zip, **Properties**, tick **Unblock**, **OK**, then extract.
